@@ -109,8 +109,8 @@ The essential inputs are:
 - `ftime`: failure or censoring times
 - `fstatus`: event status
 - `cov`: covariate matrix
-- `failcode`: event code of interest (If it is not 1)
-- `cencode`: censoring code (If it is not 0)
+- `failcode`: event code of interest (Includes cases other than 1)
+- `cencode`: censoring code (Includes cases other than 0)
 
 For example:
 
