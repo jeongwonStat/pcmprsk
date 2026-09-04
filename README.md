@@ -41,7 +41,7 @@ devtools::install_github("jeongwonStat/pcmprsk")
 
 For competing risks data, the cumulative incidence function for cause \(k\) is modeled directly through the generalized odds rate transformation:
 
-\[
+```math
 F_k(t;\mathbf Z)
 =
 1-
@@ -51,15 +51,15 @@ F_k(t;\mathbf Z)
 \exp(\mathbf Z^\top\boldsymbol\beta_k)
 u_k(t)
 \right\}^{-1/\alpha_k},
-\]
+```
 
 where:
 
-- \(F_k(t;\mathbf Z)\) is the CIF for cause \(k\),
-- \(\mathbf Z\) is a vector of covariates,
-- \(\boldsymbol\beta_k\) is the regression coefficient vector,
-- \(\alpha_k\) is the generalized odds-rate link parameter, and
-- \(u_k(t)\) is a parametric baseline cumulative function.
+- $F_k(t;\mathbf Z)$ is the CIF for cause $k$,
+- $\mathbf Z$ is a vector of covariates,
+- $\boldsymbol\beta_k$ is the regression coefficient vector,
+- $\alpha_k$ is the generalized odds-rate link parameter, and
+- $u_k(t)$ is a parametric baseline cumulative function.
 
 The generalized odds-rate framework includes important special cases such as proportional hazards and proportional odds models.
 
@@ -73,9 +73,9 @@ Model parameters are estimated by **full maximum likelihood**.
 
 | Model | Argument | Parameters | Main feature |
 |---|---|---|---|
-| Two-parameter Gompertz | `"gompertz2"` | \(\rho,\tau\) | Monotone hazard shapes |
-| Three-parameter Gompertz | `"gompertz3"` | \(\rho,\tau,\eta\) | Can represent unimodal hazard shapes |
-| Modified logistic | `"logistic"` | \(b,c,p\) | Flexible sigmoidal and bounded cumulative functions |
+| Two-parameter Gompertz | `"gompertz2"` | ($\rho,\tau$) | Monotone hazard shapes |
+| Three-parameter Gompertz | `"gompertz3"` | ($\rho,\tau,\eta$) | Can represent unimodal hazard shapes |
+| Modified logistic | `"logistic"` | (b,c,p) | Flexible sigmoidal and bounded cumulative functions |
 
 Short aliases are also available:
 
@@ -162,12 +162,9 @@ The three models provide different levels of flexibility.
 Future development of `pcmprsk` includes:
 
 - More numerically stable maximum likelihood optimization
-- Improved handling of difficult or weakly identified parameter configurations
 - Additional parametric baseline hazard functions
 - Improved diagnostics for model convergence and identifiability
 - Additional model comparison tools
-- Further prediction and inference functionality
-
 ---
 
 ### References
