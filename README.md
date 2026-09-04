@@ -116,8 +116,8 @@ For example:
 
 ```R
 fit <- pcrr(ftime = time_vector_data,
-           fstatus = event_num_vector_data,
-           cov = covariate_matrix_data)
+            fstatus = event_num_vector_data,
+            cov = covariate_matrix_data)
 ```
 
 When `distribution` is omitted, the **two-parameter Gompertz model** (`"gompertz2"`) is used by default.
