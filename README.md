@@ -16,7 +16,7 @@ The package provides:
 ---
 
 ## Installation
-
+<!--
 ### From CRAN
 
 The current released version can be installed from CRAN using:
@@ -24,7 +24,7 @@ The current released version can be installed from CRAN using:
 ```R
 install.packages("pcmprsk")
 ```
-
+-->
 ### Development version from GitHub
 
 The development version can be installed directly from GitHub using `devtools`:
