@@ -109,15 +109,15 @@ The essential inputs are:
 - `ftime`: failure or censoring times
 - `fstatus`: event status
 - `cov`: covariate matrix
-- `failcode`: event code of interest
-- `cencode`: censoring code
+- `failcode`: event code of interest (If it is not 1)
+- `cencode`: censoring code (If it is not 0)
 
 For example:
 
 ```R
 fit <- pcrr(ftime = time_vector_data,
-       fstatus = event_num_vector_data,
-       cov = covariate_matrix_data)
+           fstatus = event_num_vector_data,
+           cov = covariate_matrix_data)
 ```
 
 When `distribution` is omitted, the **two-parameter Gompertz model** (`"gompertz2"`) is used by default.
