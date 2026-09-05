@@ -2,10 +2,8 @@ Package: pcmprsk
 Type: Package
 Title: Parametric Regression Models for the Cumulative Incidence Function
 Version: 1.0.0
-Authors@R: c(
-    person("Sang Kyu", "Lee", email = "sangkyulee@konkuk.ac.kr", role = "aut"), 
-    person("Jae Hwan", "Kim", email = "jaehwan5025@gmail.com", role = "aut"),
-    person("Jeong Won", "Ahn", email = "anjw0824@gmail.com", role = c("aut", "cre")))
+Author: Jeong Won Ahn <anjw0824@gmail.com>, Jae Hwan Kim <jaehwan5025@gmail.com>, Jong-Hyeon Jeong <jong-hyeon.jeong@nih.gov> and Sang Kyu Lee <sangkyulee@konkuk.ac.kr>
+Maintainer: Jeong Won Ahn <anjw0824@gmail.com>
 Description: Fits parametric regression models for the cumulative
     incidence function in competing risks data using the generalized
     odds rate transformation model of Jeong and Fine (2007).
