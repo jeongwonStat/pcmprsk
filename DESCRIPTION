@@ -3,7 +3,7 @@ Type: Package
 Title: Parametric Regression Models for the Cumulative Incidence Function
 Version: 1.0.0
 Authors@R: c(
-    person("Sang Kyu", "Lee", email = "leesa111@msu.edu", role = "aut"), 
+    person("Sang Kyu", "Lee", email = "sangkyulee@konkuk.ac.kr", role = "aut"), 
     person("Jae Hwan", "Kim", email = "jaehwan5025@gmail.com", role = "aut"),
     person("Jeong Won", "Ahn", email = "anjw0824@gmail.com", role = c("aut", "cre")))
 Description: Fits parametric regression models for the cumulative
