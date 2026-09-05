@@ -1,16 +1,17 @@
 #' Fit a Parametric Regression Model for the Cumulative Incidence Function
 #'
-#' Fits a parametric regression model for the cumulative incidence
-#' function in competing risks data using the generalized odds rate
-#' transformation model proposed by Jeong and Fine (2007).
+#' Fits parametric regression models for the cumulative incidence function 
+#' in competing risks data using the generalized odds rate transformation 
+#' model by using various parametric baseline functions.
 #' 
+
 #' @details
-#' The cumulative incidence function of cause \eqn{k} is modelled through the
-#' generalized odds-rate link
+#' The cumulative incidence function of cause k is modelled through the generalized
+#' odds-rate link (Dabrowska and Doksum, 1988)
 #' \deqn{F_k(t; \mathbf{Z}) = 1 - \{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k) u_k(t)\}^{-1/\alpha_k},}
 #' where \eqn{u_k(t)} is a parametric baseline function that is
 #' nondecreasing in \eqn{t}. With
-#' \code{distribution = "gompertz2"} the baseline is the two-parameter Gompertz
+#' \code{distribution = "gompertz2"} the baseline (Jeong and Fine, 2007) is the two-parameter Gompertz
 #' cumulative hazard
 #' \deqn{u_k(t) = \dfrac{\tau_k}{\rho_k}(e^{\rho_k t} - 1),}
 #' while \code{distribution = "gompertz3"} uses its three-parameter extension
