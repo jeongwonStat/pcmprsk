@@ -51,19 +51,8 @@ If both \code{dist} and \code{distribution} are specified,
 
 \item{maxiter}{maximum number of optimization iterations. internally, \code{eval.max} is set to \code{3 * maxiter}.}
 
-\item{init}{initial values of the model parameters. For
-\code{distribution = "gompertz2"}, these are given as
-\code{c(alpha1, rho1, tau1, beta11, beta12, ..., alpha2, rho2, tau2, 
-beta21, beta22, ...)}, and for \code{distribution = "gompertz3"} as
-\code{c(alpha1, rho1, tau1, eta1, beta11, beta12, ..., alpha2, rho2, 
-tau2, eta2, beta21, beta22, ...)}. For
-\code{distribution = "logistic"}, these are given as
-\code{c(alpha1, b1, c1, p1, beta11, beta12, ..., alpha2, b2, c2, p2, 
-beta21, beta22, ...)}. The expected length is \code{k * (3 + p)},
-\code{k * (4 + p)}, and \code{k * (4 + p)}, respectively. The first
-block corresponds to the event of interest (\code{failcode}), followed
-by the competing events in ascending order of their event codes. The
-censoring code (\code{cencode}) is excluded.}
+\item{init}{a user-specified initial parameter vector.
+See \code{\link{pcrr-parameter-order}} for the parameter ordering.}
 
 \item{variance}{logical value indicating whether the variance-covariance
 matrix is computed. The default is \code{TRUE}. If \code{FALSE}, only the
@@ -71,17 +60,10 @@ maximum likelihood estimates and the score vector are computed.}
 }
 \value{
 An object of class \code{"pcrr"}, which is a list containing the following components:
-\item{\code{coef}}{estimated model parameters. For \code{distribution = "gompertz2"},
-these are given as \code{c(alpha1, rho1, tau1, beta11, beta12, ...,
- alpha2, rho2, tau2, beta21, beta22, ...)}; for
-\code{distribution = "gompertz3"}, as
-\code{c(alpha1, rho1, tau1, eta1, beta11, beta12, ...,
- alpha2, rho2, tau2, eta2, beta21, beta22, ...)}; and for
-\code{distribution = "logistic"}, as
-\code{c(alpha1, b1, c1, p1, beta11, beta12, ..., alpha2, b2, c2, p2,
- beta21, beta22, ...)}.}
+\item{\code{coef}}{estimated model parameters, stored according to the parameter ordering described in \code{\link{pcrr-parameter-order}}.}
 \item{\code{loglik}}{maximized log-likelihood value.}
-\item{\code{init}}{initial parameter values used to start the optimization. The parameters are stored in the same order as \code{coef}.}
+\item{\code{init}}{initial parameter values used to start the optimization,
+stored according to the parameter ordering described in \code{\link{pcrr-parameter-order}}.}
 \item{\code{score}}{score vector evaluated at the maximum likelihood estimates.}
 \item{\code{inf}}{observed information matrix (the negative Hessian matrix); \code{NULL} if \code{variance = FALSE}.}
 \item{\code{invinf}}{inverse of the observed information matrix; \code{NULL} if \code{variance = FALSE}.}

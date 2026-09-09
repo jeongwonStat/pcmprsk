@@ -101,36 +101,18 @@
 #' @param gtol relative convergence tolerance (\code{rel.tol}) used by 
 #' \code{nlminb()}. The default value is \code{1e-6}.
 #' @param maxiter maximum number of optimization iterations. internally, \code{eval.max} is set to \code{3 * maxiter}.
-#' @param init initial values of the model parameters. For 
-#'  \code{distribution = "gompertz2"}, these are given as 
-#'  \code{c(alpha1, rho1, tau1, beta11, beta12, ..., alpha2, rho2, tau2, 
-#'  beta21, beta22, ...)}, and for \code{distribution = "gompertz3"} as 
-#'  \code{c(alpha1, rho1, tau1, eta1, beta11, beta12, ..., alpha2, rho2, 
-#'  tau2, eta2, beta21, beta22, ...)}. For 
-#'  \code{distribution = "logistic"}, these are given as
-#'  \code{c(alpha1, b1, c1, p1, beta11, beta12, ..., alpha2, b2, c2, p2, 
-#'  beta21, beta22, ...)}. The expected length is \code{k * (3 + p)}, 
-#'  \code{k * (4 + p)}, and \code{k * (4 + p)}, respectively. The first 
-#'  block corresponds to the event of interest (\code{failcode}), followed 
-#'  by the competing events in ascending order of their event codes. The 
-#'  censoring code (\code{cencode}) is excluded.
+#' @param init a user-specified initial parameter vector.
+#'  See \code{\link{pcrr-parameter-order}} for the parameter ordering.
 #' @param variance logical value indicating whether the variance-covariance
 #'  matrix is computed. The default is \code{TRUE}. If \code{FALSE}, only the
 #'  maximum likelihood estimates and the score vector are computed.
 #'
 #' @return
 #' An object of class \code{"pcrr"}, which is a list containing the following components:
-#' \item{\code{coef}}{estimated model parameters. For \code{distribution = "gompertz2"},
-#'  these are given as \code{c(alpha1, rho1, tau1, beta11, beta12, ...,
-#'  alpha2, rho2, tau2, beta21, beta22, ...)}; for
-#'  \code{distribution = "gompertz3"}, as
-#'  \code{c(alpha1, rho1, tau1, eta1, beta11, beta12, ...,
-#'  alpha2, rho2, tau2, eta2, beta21, beta22, ...)}; and for
-#'  \code{distribution = "logistic"}, as
-#'  \code{c(alpha1, b1, c1, p1, beta11, beta12, ..., alpha2, b2, c2, p2,
-#'  beta21, beta22, ...)}.}
+#' \item{\code{coef}}{estimated model parameters, stored according to the parameter ordering described in \code{\link{pcrr-parameter-order}}.}
 #' \item{\code{loglik}}{maximized log-likelihood value.}
-#' \item{\code{init}}{initial parameter values used to start the optimization. The parameters are stored in the same order as \code{coef}.}
+#' \item{\code{init}}{initial parameter values used to start the optimization,
+#'  stored according to the parameter ordering described in \code{\link{pcrr-parameter-order}}.}
 #' \item{\code{score}}{score vector evaluated at the maximum likelihood estimates.}
 #' \item{\code{inf}}{observed information matrix (the negative Hessian matrix); \code{NULL} if \code{variance = FALSE}.}
 #' \item{\code{invinf}}{inverse of the observed information matrix; \code{NULL} if \code{variance = FALSE}.}
@@ -1690,6 +1672,75 @@ print.cure.pcrr <- function(x, digits = 8, ...) {
   
   invisible(x)
 }
+
+#' Parameter Vector Order
+#'
+#' This section describes the order of parameters in the parameter vector
+#' used by the \code{init} argument of \code{pcrr} and the \code{coef}
+#' component of objects of class \code{pcrr}.
+#'
+#' The parameter vector is generally structured as follows:
+#'
+#' \code{c(alpha1, parameters of \eqn{u_1(t)}, beta11, beta12, ...,
+#'        alpha2, parameters of \eqn{u_2(t)}, beta21, beta22, ...)}
+#'
+#' Here, \code{alpha_k} denotes the parameter of the GOR transformation,
+#' and \code{beta_k} denotes the regression coefficients for the covariates.
+#' The coefficients are ordered as \code{beta_k1, beta_k2, ..., beta_kP}
+#' and follow the column order of the input covariate matrix.
+#'
+#' \subsection{Gompertz2}{
+#'
+#' For \code{distribution = "gompertz2"}, the parameters of \eqn{u_k(t)}
+#' are ordered as \eqn{(\rho_k, \tau_k)}. Therefore, the parameter vector is
+#' interpreted as:
+#'
+#' \code{c(alpha1, rho1, tau1, beta11, beta12, ...,
+#'        alpha2, rho2, tau2, beta21, beta22, ...)}
+#'
+#' The expected length of the parameter vector is \code{K * (3 + P)},
+#' where \code{K} is the number of event types, excluding censoring events,
+#' and \code{P} is the number of covariates.
+#' }
+#'
+#' \subsection{Gompertz3}{
+#'
+#' For \code{distribution = "gompertz3"}, the parameters of \eqn{u_k(t)}
+#' are ordered as \eqn{(\rho_k, \tau_k, \eta_k)}. Therefore, the parameter
+#' vector is interpreted as:
+#'
+#' \code{c(alpha1, rho1, tau1, eta1, beta11, beta12, ...,
+#'        alpha2, rho2, tau2, eta2, beta21, beta22, ...)}
+#'
+#' The expected length of the parameter vector is \code{K * (4 + P)}.
+#' }
+#'
+#' \subsection{Logistic}{
+#'
+#' For \code{distribution = "logistic"}, the parameters of \eqn{u_k(t)}
+#' are ordered as \eqn{(b_k, c_k, p_k)}. Therefore, the parameter vector is
+#' interpreted as:
+#'
+#' \code{c(alpha1, b1, c1, p1, beta11, beta12, ...,
+#'        alpha2, b2, c2, p2, beta21, beta22, ...)}
+#'
+#' The expected length of the parameter vector is \code{K * (4 + P)}.
+#' Here, \code{p} and \code{P} denote different quantities: \code{p}
+#' is a parameter of the modified logistic baseline function, whereas
+#' \code{P} denotes the number of covariates.
+#' }
+#'
+#' The functions in \pkg{pcmprsk} validate the parameter vector based on
+#' its length and interpret its elements according to the ordering
+#' described above.
+#'
+#' @seealso
+#' \code{\link{pcrr}}
+#'
+#' @name pcrr-parameter-order
+#' @rdname pcrr-parameter-order
+NULL
+
 
 
 # Kernel Function
