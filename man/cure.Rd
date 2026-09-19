@@ -7,7 +7,7 @@
 \usage{
 cure(object, ...)
 
-\method{cure}{pcrr}(object, cov, event = NULL, ...)
+\method{cure}{pcrr}(object, cov, case = NULL, event = NULL, ...)
 }
 \arguments{
 \item{object}{a fitted model object.}
@@ -15,6 +15,10 @@ cure(object, ...)
 \item{...}{further arguments passed to or from methods.}
 
 \item{cov}{numeric matrix of covariate values.}
+
+\item{case}{integer vector selecting the transformation-model cases to use,
+numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
+every available case is used.}
 
 \item{event}{event type for which the cure fraction is computed.
 The default is the failure type of interest.}

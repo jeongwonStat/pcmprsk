@@ -36,5 +36,6 @@ displayed as \code{(Fixed)}.
 }
 \seealso{
 \code{\link{pcrr}},
+\code{\link{plot.pcrr}},
 \code{\link{summary.pcrr}}
 }

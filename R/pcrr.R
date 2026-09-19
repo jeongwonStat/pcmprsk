@@ -74,6 +74,7 @@
 #'
 #' @seealso
 #' \code{\link{print.pcrr}}, 
+#' \code{\link{plot.pcrr}}, 
 #' \code{\link{summary.pcrr}}, 
 #' \code{\link{predict.pcrr}}, 
 #' \code{\link{plot.predict.pcrr}}, 
@@ -106,15 +107,7 @@
 #' @param variance logical value indicating whether the variance-covariance
 #'  matrix is computed. The default is \code{TRUE}. If \code{FALSE}, only the
 #'  maximum likelihood estimates and the score vector are computed.
-#' @param model a character or integer vector specifying the transformation
-#'  model for each event. Its length must equal the number of competing
-#'  events. The proportional hazards (PH) and proportional odds (PO) models
-#'  are special cases of the GOR transformation model, corresponding to
-#'  \eqn{\alpha_k = 0} and \eqn{\alpha_k = 1}, respectively. When PH or PO is
-#'  specified, the corresponding alpha value is fixed at 0 or 1.
-#'  The values \code{"PH"}, \code{0}, \code{"PO"}, \code{1}, and
-#'  \code{"GOR"} can be used. Character values are case-insensitive, and
-#'  any other value is treated as \code{"GOR"}.
+#' @param sig.level a significant level for model assumption test.
 #'
 #' @return
 #' An object of class \code{"pcrr"}, which is a list containing the following components:
@@ -140,7 +133,7 @@
 #' \item{\code{fixed_alpha}}{alpha values specified through the \code{model} argument.}
 #' 
 #' 
-#' @importFrom survival coxph Surv
+#' @importFrom survival coxph Surv survfit
 #' @importFrom stats D model.matrix na.fail na.omit nlminb pnorm qnorm printCoefmat setNames uniroot approx
 #' @importFrom graphics lines legend abline axis par points
 #' @importFrom rlang .data
@@ -177,10 +170,6 @@
 #' cure(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)))
 #'
 #'
-#' # Transformation model assumption
-#' fit11 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2), model = c("GOR", "PO"))
-#' print(fit11)
-#' summary(fit11)
 #'
 #'
 #' @examples
@@ -231,7 +220,7 @@
 #'  
 #' @export
 pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failcode=1, cencode=0,
-                 na.action=na.omit, gtol=1e-6, maxiter=300, init, variance=TRUE, model) {
+                 na.action=na.omit, gtol=1e-6, maxiter=300, init, variance=TRUE, sig.level=0.05) {
 
   if (!is.null(dist)) distribution <- dist
   distribution <- tolower(distribution)
@@ -329,100 +318,39 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
   colnames(z) <- cov_names
   
 
-  # Transformation model selection
-  fixed_alpha <- NULL
-  # -1: GOR (alpha estimated freely)
-  #  0: PH  (alpha fixed at 0)
-  #  1: PO  (alpha fixed at 1)
-  if (!missing(model)) {
-    if (length(model) != K) {
-      warning("Invalid model specification. The default model will be used (GOR for all events).")
-    } else {
-      fixed_alpha <- integer(K)
-      for (k in 1:K){
-        model_k <- tolower(as.character(model[k]))
-        if (model_k == "gor") {
-          fixed_alpha[k] <- -1
-        } else if (model_k == "ph" || model_k == "0") {
-          fixed_alpha[k] <- 0
-          message("The transformation model for event ", mapping[k],
-              " is specified as proportional hazards (PH). ",
-              "This corresponds to alpha = 0.")
-        } else if (model_k == "po" || model_k == "1") {
-          fixed_alpha[k] <- 1
-          message("The transformation model for event ", mapping[k],
-              " is specified as proportional odds (PO). ",
-              "This corresponds to alpha = 1.")
-        } else {
-          warning("Invalid model specification for event ", mapping[k],
-                  ". The default model will be used (GOR).")
-          fixed_alpha[k] <- -1
-        }
-      }
-    }
-  }
-
 
   
   # Kernel Operations
   if (distribution == "gompertz2"){
-    if (init_ok) {
-      theta_init <- init
-    } else {
-      theta_init <- .init_values_gom2(x, delta, z)
-    }
-    
-    val_mle <- suppressWarnings(
-      tryCatch(.log_lik_gom2(x = x, delta = delta, z = z, theta = theta_init),
-        error = function(e) NaN)
-    )
-    
-    if (!is.finite(val_mle) || abs(val_mle) >= 1e+100) {
-      warning("The log-likelihood evaluated at the initial values returned NaN. ",
-              "Optimization will proceed, but may converge to an incorrect or degenerate solution.")
-    }
-    
-    theta_mle <- .estimate_mle_gom2(x, delta, z, theta_init, gtol, maxiter, fixed_alpha)
-    score_hessian <- .score_hessian_gom2(x, delta, z, theta_mle$par, variance)
+    .init_values <- .init_values_gom2
+    .log_lik <- .log_lik_gom2
+    .estimate_mle <- .estimate_mle_gom2
+    .score_hessian <- .score_hessian_gom2
   } else if (distribution == "gompertz3"){
-    if (init_ok) {
-      theta_init <- init
-    } else {
-      theta_init <- .init_values_gom3(x, delta, z)
-    }
-    
-    val_mle <- suppressWarnings(
-      tryCatch(.log_lik_gom3(x = x, delta = delta, z = z, theta = theta_init),
-               error = function(e) NaN)
-    )
-    
-    if (!is.finite(val_mle) || abs(val_mle) >= 1e+100) {
-      warning("The log-likelihood evaluated at the initial values returned NaN. ",
-              "Optimization will proceed, but may converge to an incorrect or degenerate solution.")
-    }
-    
-    theta_mle <- .estimate_mle_gom3(x, delta, z, theta_init, gtol, maxiter, fixed_alpha)
-    score_hessian <- .score_hessian_gom3(x, delta, z, theta_mle$par, variance)
+    .init_values <- .init_values_gom3
+    .log_lik <- .log_lik_gom3
+    .estimate_mle <- .estimate_mle_gom3
+    .score_hessian <- .score_hessian_gom3
   } else if (distribution == "logistic"){
-    if (init_ok) {
-      theta_init <- init
-    } else {
-      theta_init <- .init_values_logi(x, delta, z)
-    }
-    
-    val_mle <- suppressWarnings(
-      tryCatch(.log_lik_logi(x = x, delta = delta, z = z, theta = theta_init),
-               error = function(e) NaN)
-    )
-    
-    if (!is.finite(val_mle) || abs(val_mle) >= 1e+100) {
-      warning("The log-likelihood evaluated at the initial values returned NaN. ",
-              "Optimization will proceed, but may converge to an incorrect or degenerate solution.")
-    }
-    
-    theta_mle <- .estimate_mle_logi(x, delta, z, theta_init, gtol, maxiter, fixed_alpha)
-    score_hessian <- .score_hessian_logi(x, delta, z, theta_mle$par, variance)
+    .init_values <- .init_values_logi
+    .log_lik <- .log_lik_logi
+    .estimate_mle <- .estimate_mle_logi
+    .score_hessian <- .score_hessian_logi
   } 
+  
+  if (init_ok) theta_init <- init
+  else theta_init <- .init_values(x, delta, z)
+  
+  val_mle <- suppressWarnings(tryCatch(.log_lik(x = x, delta = delta, z = z, theta = theta_init),
+                                       error = function(e) NaN))
+  if (!is.finite(val_mle) || abs(val_mle) >= 1e+100) {
+    warning("The log-likelihood evaluated at the initial values returned NaN. ",
+            "Optimization will proceed, but may converge to an incorrect or degenerate solution.")
+  }
+  
+  theta_mle <- .estimate_mle(x, delta, z, theta_init, gtol, maxiter, NULL)
+  score_hessian <- .score_hessian(x, delta, z, theta_mle$par, variance, NULL)
+  
   
   
   # Display param name
@@ -473,17 +401,18 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
   
   inv_hess <- NULL 
   if (!is.null(hess)){
-    inv_hess <- tryCatch(solve(-hess),
-                         error = function(e) {
+    inv_hess <- tryCatch(solve(-hess), error = function(e) {
                            warning("Hessian matrix is singular or non-invertible.")
-                           return(NULL)
-                         })
+                           return(NULL)})
   }
 
-  
   # Model assumption testing:
-  # H0: alpha = 0 corresponds to PH; H0: alpha = 1 corresponds to PO. 
+  # H0: alpha = 0 corresponds to PH; H0: alpha = 1 corresponds to PO.
+  fixed_model <- NULL
   if (variance) {
+    fixed_model <- integer(K)
+    signif_level <- sig.level
+    
     est <- par
     se  <- sqrt(diag(inv_hess))
 
@@ -497,7 +426,7 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
         idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
       }
       
-      is_alpha <- logical(length(est))
+      is_alpha <- logical(length(par))
       is_alpha[idx_alpha] <- TRUE
       
       
@@ -507,28 +436,106 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
       p_po <- 2 * (1 - pnorm(abs(z_po)))
       
       for (k in 1:K) {
-        if (!is.null(fixed_alpha)){
-          if (fixed_alpha[k] != -1) next
-        } 
-        # if (is.null(p_ph) || is.null(p_po)) break 
-        if (!is.finite(p_ph[k]) || !is.finite(p_po[k])) next
-        
-        if (p_ph[k] <= 0.05 && p_po[k] <= 0.05) {
-          message("At the 0.05 significance level, both the PH and PO hypotheses ",
-                  "are rejected for event ", mapping[k], ".")
-        } else if (p_ph[k] <= 0.05 && p_po[k] > 0.05) {
-          message("At the 0.05 significance level, the PH hypothesis is rejected, ",
-                  "but the PO hypothesis is not rejected for event ", mapping[k], ".")
-        } else if (p_ph[k] > 0.05 && p_po[k] <= 0.05) {
-          message("At the 0.05 significance level, the PO hypothesis is rejected, ",
-                  "but the PH hypothesis is not rejected for event ", mapping[k], ".")
+        if (!is.finite(p_ph[k]) && !is.finite(p_po[k])) {
+          message("Neither the PH nor the PO hypothesis could be tested for event ", mapping[k], ".")
+          fixed_model[k] <- -1
+          
+        } else if (!is.finite(p_ph[k])) {
+          if (p_po[k] > signif_level) {
+            message("The PH hypothesis could not be tested, but the PO hypothesis ",
+                    "was not rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+            fixed_model[k] <- 1
+          } else {
+            message("The PH hypothesis could not be tested, and the PO hypothesis ",
+                    "was rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+            fixed_model[k] <- -1
+          }
+          
+        } else if (!is.finite(p_po[k])) {
+          if (p_ph[k] > signif_level) {
+            message("The PO hypothesis could not be tested, but the PH hypothesis ",
+                    "was not rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+            fixed_model[k] <- 0
+          } else {
+            message("The PO hypothesis could not be tested, and the PH hypothesis ",
+                    "was rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+            fixed_model[k] <- -1
+          }
+          
+        } else if (p_ph[k] <= signif_level && p_po[k] <= signif_level) {
+          message("At the ", signif_level, " significance level, both the PH and PO hypotheses are rejected ",
+                  "for event ", mapping[k], ".")
+          fixed_model[k] <- -1
+          
+        } else if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
+          message("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
+                  "hypothesis is not rejected for event ", mapping[k], ".")
+          fixed_model[k] <- 1
+          
+        } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
+          message("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
+                  "hypothesis is not rejected for event ", mapping[k], ".")
+          fixed_model[k] <- 0
+          
+        } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
+          message("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
+                  "rejected for event ", mapping[k], ".")
+          fixed_model[k] <- 2
+          
         } else {
-          message("At the 0.05 significance level, neither the PH nor the PO ",
-                  "hypothesis is rejected for event ", mapping[k], ".")
+          warning("An unexpected result occurred during the model assumption tests ",
+                  "for event ", mapping[k], ".")
+          fixed_model[k] <- -1
         }
       }
     }
   }
+  
+  if (any(fixed_model == -1)) {
+    stop("Neither the PH nor the PO transformation model is appropriate for the data for event(s) ",
+         paste(mapping[which(fixed_model == -1)], collapse = ", "), ". The function cannot proceed.")
+  }
+  
+  # all cases
+  case_all <- as.matrix(expand.grid(rep(list(0:1), K)))
+  colnames(case_all) <- paste0("event ", mapping)
+  for (k in 1:K){
+    if (fixed_model[k] == 2) next
+    idx <- case_all[, k] == fixed_model[k]
+    case_all <- case_all[idx, , drop = FALSE]
+  }
+  
+  case_model <- character(nrow(case_all))
+  for (i in 1:nrow(case_all)) {
+    case_model[i] <- paste0("[case ", i, "] ")
+    for (k in 1:K) {
+      case_model[i] <- paste0(case_model[i], if (k > 1) ", " else "","event ", mapping[k], " : ", ifelse(case_all[i, k] == 0, "PH", "PO"))
+    }
+  }
+  
+
+  # fitting MLE for all case
+  mle_case_all <- vector("list", nrow(case_all))
+  for (i in 1:nrow(case_all)) {
+    mle_case_all[[i]] <- .estimate_mle(x, delta, z, theta_init, gtol, maxiter, case_all[i, ])
+    names(mle_case_all[[i]]$par) <- display_names
+  }
+  names(mle_case_all) <- case_model
+  
+  # calculate hessian for all case
+  hess_case_all <- NULL
+  if (variance) {
+    display_names2 <- display_names[!is_alpha]
+    hess_case_all <- vector("list", nrow(case_all))
+    for (i in 1:nrow(case_all)) {
+      hess_case_all[[i]] <- .score_hessian(x, delta, z, mle_case_all[[i]]$par, variance, case_all[i, ])$hessian
+      dimnames(hess_case_all[[i]]) <- list(display_names2, display_names2)
+    }
+    names(hess_case_all) <- case_model
+  }
+  
+  
+
   
   # Define Class 'pcrr'
   cls <- list(coef      = par,
@@ -541,6 +548,9 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
               iter      = theta_mle$iterations,
               message   = theta_mle$message,
               call      = call,
+              x         = x,
+              delta     = delta,
+              z         = z,
               n         = N,
               n_missing = N_mis,
               k = K,
@@ -549,7 +559,11 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
               cov_names = cov_names,
               mapping = mapping,
               maxtime = max(x),
-              fixed_alpha = fixed_alpha
+              signif = sig.level,
+              case_all = case_all,
+              case_model = case_model,
+              mle_case_all = mle_case_all,
+              hess_case_all = hess_case_all
   )
   class(cls) <- "pcrr"
   cls
@@ -583,6 +597,7 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
 #'
 #' @seealso
 #' \code{\link{pcrr}},
+#' \code{\link{plot.pcrr}},
 #' \code{\link{summary.pcrr}}
 #'
 #' @export
@@ -590,27 +605,17 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
   P <- x$p
   K <- x$k
   
-  est <- x$coef
   
   if (x$distribution == "gompertz2") {
     block <- 3 + P
   } else {
     block <- 4 + P
   }
-  
-  bstart <- block - P + 1
-  
   idx_alpha <- (seq_len(K) - 1) * block + 1
   
-  if (is.null(x$cov_names)) {
-    cov_names <- paste0("beta", seq_len(P))
-  } else {
-    cov_names <- x$cov_names
-  }
   
   
-  
-  cat("convergence:", x$converged, "  (iteration : ", x$iter, ")\n", sep = "")
+  cat("convergence : ", x$converged, "  (iteration : ", x$iter, ")\n", sep = "")
   
   if (!isTRUE(x$converged)) {
     if (!is.null(x$message) && nzchar(x$message)) {
@@ -622,72 +627,25 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
   
   
   
+  est <- x$coef
   if (is.null(x$invinf)) {
     se <- NULL
   } else {
     se <- sqrt(diag(x$invinf))
   }
+
   
-  # 1. Regression coefficients
-  cat("\nRegression coefficients:\n")
-  
-  for (k in seq_len(K)) {
-    
-    # Beta parameters for event k
-    idx <- ((k - 1) * block + bstart):(k * block)
-    
-    beta_est <- est[idx]
-    
-    cat("\nEvent", x$mapping[k], ":\n")
-    
-    # If variance = FALSE or inverse information is unavailable
-    if (is.null(se)) {
-      
-      out <- data.frame(
-        est = beta_est,
-        check.names = FALSE
-      )
-      
-    } else {
-      
-      beta_se <- se[idx]
-      beta_z  <- beta_est / beta_se
-      beta_p  <- 2 * (1 - pnorm(abs(beta_z)))
-      
-      out <- data.frame(
-        est = beta_est,
-        se = beta_se,
-        `z value` = beta_z,
-        `Pr(>|z|)` = beta_p,
-        check.names = FALSE
-      )
-    }
-    
-    print(out, ...)
-  }
-  
-  
-  
-  # 2. Model assumption tests
+  # Model assumption tests
   if (!is.null(se)) {
 
-    
-    cat("\n\n")
+    cat("\n")
     cat("========================================\n")
     cat("Model assumption tests\n")
     cat("========================================\n\n")
 
     
-    if (is.null(x$fixed_alpha)) {
-      fixed_alpha <- rep(-1, K)
-    } else {
-      fixed_alpha <- x$fixed_alpha
-    }
-    
     alpha_est <- est[idx_alpha]
     alpha_se  <- se[idx_alpha]
-    alpha_se0 <- alpha_se
-    alpha_se1 <- alpha_se
     
     z_ph <- (alpha_est - 0) / alpha_se
     p_ph <- 2 * (1 - pnorm(abs(z_ph)))
@@ -695,65 +653,386 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
     z_po <- (alpha_est - 1) / alpha_se
     p_po <- 2 * (1 - pnorm(abs(z_po)))
     
-
-    for (k in 1:K) {
-      if (fixed_alpha[k] == 0) {
-        alpha_se0[k] <- NA_real_
-        z_ph[k] <- NA_real_
-        p_ph[k] <- NA_real_
-      }
-      if (fixed_alpha[k] == 1) {
-        alpha_se1[k] <- NA_real_
-        z_po[k] <- NA_real_
-        p_po[k] <- NA_real_
-      }
-    }
+    link_ph <- data.frame(est = alpha_est, se = alpha_se, `z value` = z_ph, `Pr(>|z|)` = p_ph, check.names = FALSE)
     
-    link_ph <- data.frame(est = alpha_est, se = alpha_se0, `z value` = z_ph, `Pr(>|z|)` = p_ph, check.names = FALSE)
-    
-    link_po <- data.frame(est = alpha_est, se = alpha_se1, `z value` = z_po, `Pr(>|z|)` = p_po, check.names = FALSE)
-
+    link_po <- data.frame(est = alpha_est, se = alpha_se, `z value` = z_po, `Pr(>|z|)` = p_po, check.names = FALSE)
     
     
     cat("[Proportional Hazards]\n")
-    cat("H0: alpha = 0\n\n")
+    cat("H0 : alpha = 0\n\n")
     
     printCoefmat(link_ph, digits = digits, signif.stars = FALSE, has.Pvalue = TRUE,
-                 P.values = TRUE, cs.ind = 1, tst.ind = 2, na.print = "(Fixed)")
+                 P.values = TRUE, cs.ind = 1, tst.ind = 2)
     
     cat("\n----------------------------------------\n\n")
 
     
 
     cat("[Proportional Odds]\n")
-    cat("H0: alpha = 1\n\n")
+    cat("H0 : alpha = 1\n\n")
     
     printCoefmat(link_po, digits = digits, signif.stars = FALSE, has.Pvalue = TRUE,
-                 P.values = TRUE, cs.ind = 1, tst.ind = 2, na.print = "(Fixed)")
+                 P.values = TRUE, cs.ind = 1, tst.ind = 2)
     
     cat("\n========================================\n")
     
-    for (k in 1:K) {
-      if (!is.null(fixed_alpha)){
-        if (fixed_alpha[k] != -1) next
-      } 
-      
-      if (!is.finite(link_ph[k, 4]) || !is.finite(link_po[k, 4])) next
-      
-      if (link_ph[k, 4] <= 0.05 && link_po[k, 4] <= 0.05) {
-        cat("At the 0.05 significance level, both the PH and PO hypotheses are rejected for event ", x$mapping[k], ".\n", sep = "")
-      } else if (link_ph[k, 4] <= 0.05 && link_po[k, 4] > 0.05) {
-        cat("At the 0.05 significance level, the PH hypothesis is rejected, but the PO hypothesis is not rejected for event ", x$mapping[k], ".\n", sep = "")
-      } else if (link_ph[k, 4] > 0.05 && link_po[k, 4] <= 0.05) {
-        cat("At the 0.05 significance level, the PO hypothesis is rejected, but the PH hypothesis is not rejected for event ", x$mapping[k], ".\n", sep = "")
-      } else {
-        cat("At the 0.05 significance level, neither the PH nor the PO hypothesis is rejected for event ", x$mapping[k], ".\n", sep = "")
-      }
+    # signif_level <- x$signif
+    # mapping <- x$mapping
+    # for (k in 1:K) {
+    #   if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
+    #     cat("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
+    #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
+    #   } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
+    #     cat("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
+    #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
+    #   } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
+    #     cat("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
+    #             "rejected for event ", mapping[k], ".\n", sep = "")
+    #   }
+    # }
+    
+    cat("\nThe possible model cases are as follows :\n")
+    for (i in seq_along(x$case_model)) {
+      cat(x$case_model[i], "\n")
     }
+    
   }
   
   invisible(x)
 }
+
+#' Diagnostic Plots for a Fitted Parametric Competing Risks Regression Model
+#'
+#' Draws Cox-Snell residual plots for a fitted \code{"pcrr"} model, one page per
+#' event type.
+#'
+#' @details
+#' \emph{Cox-Snell residuals.} For event type \eqn{k} the fitted cumulative
+#' subdistribution hazard of subject \eqn{i} is
+#' \deqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)
+#'   = -\log\{1-\widehat{F}_k(X_i;\mathbf{Z}_i)\}
+#'   = \frac{1}{\widehat{\alpha}_k}
+#'     \log\{1+\widehat{\alpha}_k
+#'     \exp(\mathbf{Z}_i^{\top}\widehat{\boldsymbol{\beta}}_k)
+#'     \widehat{u}_k(X_i)\},}
+#' which reduces to
+#' \eqn{\exp(\mathbf{Z}_i^{\top}\widehat{\boldsymbol{\beta}}_k)\widehat{u}_k(X_i)}
+#' as \eqn{\widehat{\alpha}_k \to 0}. If the model is correctly specified these
+#' residuals behave like a censored sample from the unit exponential
+#' distribution, so the Nelson-Aalen estimate of their own cumulative hazard
+#' should follow the 45-degree line.
+#'
+#' \emph{Risk sets.} The residuals are those of the improper random variable
+#' underlying the subdistribution hazard (Fine and Gray, 1999), in which a
+#' subject failing from a competing cause remains at risk for event \eqn{k}
+#' indefinitely. Each subject therefore enters the Nelson-Aalen estimate as
+#' \itemize{
+#'   \item an \emph{event} at \eqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)} if the
+#'   subject failed from cause \eqn{k};
+#'   \item \emph{censored} at \eqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)} if the
+#'   subject was censored without any event;
+#'   \item \emph{censored at infinity} if the subject failed from a competing
+#'   cause.
+#' }
+#' Treating a competing failure as censored at its own residual, as one would
+#' for cause-specific hazard models, removes it from later risk sets and is not
+#' appropriate here.
+#'
+#' \emph{Impropriety.} Because the fitted cumulative incidence function may be
+#' improper, \eqn{\widehat{\Lambda}_k(\infty;\mathbf{Z}_i)} can be finite. The
+#' residuals then carry a point mass at infinity equal to the fitted cure
+#' fraction, and the Nelson-Aalen curve is only estimable over the range in
+#' which events are observed. Departures from the 45-degree line should be read
+#' over that range only.
+#'
+#' @param x an object of class \code{"pcrr"}, fitted with the data retained so
+#'  that \code{x$x}, \code{x$delta} and \code{x$z} are available.
+#' @param case integer vector of model cases to draw, using the case numbers
+#'  shown by \code{\link{print.pcrr}}. If \code{NULL} (default) the first case
+#'  is used and a message is issued when more than one is available. Several
+#'  cases are overlaid and distinguished by line type.
+#' @param event vector of event types to draw, using the codes in
+#'  \code{x$mapping}. If \code{NULL} (default) every event is drawn, one page
+#'  each.
+#' @param color line colors for the model cases. Defaults to \code{"black"} for
+#'  a single case and to distinct colors when several are overlaid.
+#' @param lty line types for the model cases. Defaults to
+#'  \code{seq_len(n_case)}.
+#' @param lwd line width for the Nelson-Aalen curves.
+#' @param ref.col color of the 45-degree reference line. Default \code{"red"}.
+#' @param ref.lty line type of the 45-degree reference line. Default 2.
+#' @param conf.int logical value. If \code{TRUE}, pointwise confidence limits
+#'  for the Nelson-Aalen estimate are added. Default is \code{FALSE}.
+#' @param xlab,ylab axis labels.
+#' @param xlim,ylim axis limits. If \code{NULL}, a common square range is
+#'  computed from the residuals so that the reference line is a true diagonal.
+#' @param legend logical value indicating whether a legend is drawn.
+#' @param legend.pos position of the legend, passed to
+#'  \code{\link[graphics]{legend}}. Default \code{"topleft"}.
+#' @param main main title. If \code{NULL}, the event being plotted is used.
+#'  A vector is recycled over the selected events.
+#' @param ask logical value. If \code{TRUE}, the user is prompted before each
+#'  new page. If \code{NULL} (default), prompting is enabled only when several
+#'  events are drawn on an interactive single-panel device.
+#' @param ... additional graphical parameters passed to
+#'  \code{\link[graphics]{plot}}.
+#'
+#' @return
+#' Invisibly, a list with one element per selected case, each holding a list of
+#' per-event data frames of the residuals (\code{resid}), the status indicator
+#' used in the risk set (\code{status}) and the classification
+#' (\code{type}). The plots are produced as a side effect.
+#'
+#' @references
+#' Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
+#' subdistribution of a competing risk. \emph{Journal of the American
+#' Statistical Association} 94, 496--509.
+#'
+#' @seealso
+#' \code{\link{pcrr}},
+#' \code{\link{print.pcrr}},
+#' \code{\link{predict.pcrr}},
+#' \code{\link{plot.predict.pcrr}}
+#'
+#' @importFrom graphics abline legend lines par
+#' @importFrom grDevices dev.interactive devAskNewPage
+#' @importFrom survival Surv survfit
+#'
+#' @export
+plot.pcrr <- function(x, case = NULL, event = NULL,
+                      color = NULL, lty = NULL, lwd = 2,
+                      ref.col = "red", ref.lty = 2,
+                      conf.int = FALSE,
+                      xlab = "Cox-Snell residual",
+                      ylab = "Estimated cumulative hazard",
+                      xlim = NULL, ylim = NULL,
+                      legend = TRUE, legend.pos = "topleft",
+                      main = NULL, ask = NULL, ...) {
+  
+  ## ------------------------------------------------------------------
+  ## 0. the original data must have been retained by pcrr()
+  ## ------------------------------------------------------------------
+  if (is.null(x$x) || is.null(x$delta) || is.null(x$z))
+    stop("The original data are not stored in the fitted object, so the ",
+         "Cox-Snell residuals cannot be computed.", call. = FALSE)
+  
+  xt    <- as.numeric(x$x)
+  delta <- as.matrix(x$delta)
+  z     <- as.matrix(x$z)
+  P     <- x$p
+  K     <- x$k
+  dist  <- x$distribution
+  tol   <- 1e-12
+  
+  ## ------------------------------------------------------------------
+  ## 1. case selection : default is a single case, several are overlaid
+  ## ------------------------------------------------------------------
+  avail_case <- seq_len(nrow(x$case_all))
+  if (is.null(case)) {
+    case <- avail_case[1]
+    if (length(avail_case) > 1)
+      message("Several model cases are available; showing case ", case,
+              " only.\nUse `case = ` to select or overlay cases :\n",
+              paste(x$case_model, collapse = "\n"))
+  } else {
+    if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+        any(case != floor(case)) || !all(case %in% avail_case))
+      stop("`case` must be one or more of: ",
+           paste(avail_case, collapse = ", "), call. = FALSE)
+    case <- as.integer(unique(case))
+  }
+  n_case <- length(case)
+  
+  ## ------------------------------------------------------------------
+  ## 2. event selection : one page each
+  ## ------------------------------------------------------------------
+  mapping <- x$mapping
+  if (is.null(event)) {
+    event <- mapping
+  } else {
+    if (length(event) == 0 || !all(event %in% mapping))
+      stop("`event` must be one or more of: ",
+           paste(mapping, collapse = ", "), call. = FALSE)
+    event <- unique(event)
+  }
+  n_event <- length(event)
+  
+  ## ------------------------------------------------------------------
+  ## 3. line appearance : one curve per case
+  ## ------------------------------------------------------------------
+  if (is.null(color))
+    color <- if (n_case == 1) "black" else seq_len(n_case) + 1
+  color <- rep(color, length.out = n_case)
+  if (is.null(lty)) lty <- seq_len(n_case)
+  lty   <- rep(lty, length.out = n_case)
+  
+  ## ------------------------------------------------------------------
+  ## 4. baseline cumulative subdistribution hazard u_k(t)
+  ## ------------------------------------------------------------------
+  u_fun <- function(t, pars) {
+    if (dist == "logistic") {
+      b <- pars$b; cc <- pars$c; p <- pars$p
+      inner <- -p + p * (1 + exp(-b * cc)) / (1 + exp(b * (t - cc)))
+      out <- rep(NaN, length(t))
+      ok  <- 1 + inner > 0
+      out[ok] <- -log1p(inner[ok])
+      out
+    } else {
+      rho <- pars$rho; tau <- pars$tau
+      eta <- if (is.null(pars$eta)) 0 else pars$eta
+      if (abs(rho) < tol && abs(eta) < tol)      tau * t
+      else if (abs(rho) < tol)                   tau * exp(eta) * t
+      else if (abs(eta) < tol)                   tau * expm1(rho * t) / rho
+      else tau * exp(eta) * expm1(eta * expm1(rho * t)) / (rho * eta)
+    }
+  }
+  
+  ## pull the parameters of event k out of a case's coefficient vector
+  get_pars <- function(coefs, k) {
+    if (dist == "gompertz2") {
+      b0 <- (k - 1) * (3 + P)
+      list(alpha = coefs[b0 + 1], rho = coefs[b0 + 2], tau = coefs[b0 + 3],
+           beta = coefs[(b0 + 4):(k * (3 + P))])
+    } else if (dist == "gompertz3") {
+      b0 <- (k - 1) * (4 + P)
+      list(alpha = coefs[b0 + 1], rho = coefs[b0 + 2], tau = coefs[b0 + 3],
+           eta = coefs[b0 + 4], beta = coefs[(b0 + 5):(k * (4 + P))])
+    } else {
+      b0 <- (k - 1) * (4 + P)
+      list(alpha = coefs[b0 + 1], b = coefs[b0 + 2], c = coefs[b0 + 3],
+           p = coefs[b0 + 4], beta = coefs[(b0 + 5):(k * (4 + P))])
+    }
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 5. Cox-Snell residuals and the risk set they enter
+  ## ------------------------------------------------------------------
+  any_event <- rowSums(delta) > 0
+  
+  cs_resid <- function(i_case, k) {
+    pars <- get_pars(x$mle_case_all[[i_case]]$par, k)
+    ezb  <- as.numeric(exp(z %*% pars$beta))
+    u    <- u_fun(xt, pars)
+    a    <- as.numeric(pars$alpha)
+    
+    if (abs(a) < 1e-8) {
+      r <- ezb * u
+    } else {
+      base <- 1 + a * ezb * u
+      r <- rep(Inf, length(u))                 # outside the GOR domain
+      ok <- is.finite(u) & base > 0
+      r[ok] <- log(base[ok]) / a
+    }
+    r[!is.finite(u)] <- Inf
+    
+    ## event for cause k / censored without event / competing failure
+    is_k    <- delta[, k] == 1
+    is_comp <- any_event & !is_k
+    status  <- as.numeric(is_k)
+    r[is_comp] <- Inf                          # still at risk, forever
+    
+    type <- ifelse(is_k, "event",
+                   ifelse(is_comp, "competing", "censored"))
+    data.frame(resid = r, status = status, type = type,
+               stringsAsFactors = FALSE)
+  }
+  
+  ## Nelson-Aalen estimate of the cumulative hazard of the residuals.
+  ## Residuals censored at infinity are placed beyond every event so that
+  ## they stay in the risk set throughout.
+  na_curve <- function(cs, lab) {
+    fin <- cs$resid[is.finite(cs$resid)]
+    bad <- cs$status == 1 & !is.finite(cs$resid)
+    if (any(bad)) {
+      warning(lab, "\n", sum(bad), " observed event(s) fall outside the ",
+              "fitted model's valid range and were dropped from the ",
+              "residual plot.", call. = FALSE)
+      cs <- cs[!bad, , drop = FALSE]
+      fin <- cs$resid[is.finite(cs$resid)]
+    }
+    if (!any(cs$status == 1)) return(NULL)
+    far <- if (length(fin)) max(fin) * 1.05 + 1 else 1
+    rr  <- cs$resid
+    rr[!is.finite(rr)] <- far
+    
+    fit <- survfit(Surv(rr, cs$status) ~ 1, type = "fleming-harrington")
+    keep <- fit$n.event > 0
+    list(time = fit$time[keep],
+         H    = -log(fit$surv[keep]),
+         lo   = -log(fit$upper[keep]),
+         hi   = -log(fit$lower[keep]))
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 6. device set-up : one page per event, in the manner of plot.lm
+  ## ------------------------------------------------------------------
+  user_split <- !identical(as.integer(par("mfrow")), c(1L, 1L))
+  if (is.null(ask))
+    ask <- (n_event > 1) && !user_split && dev.interactive()
+  if (isTRUE(ask)) {
+    oask <- devAskNewPage(TRUE)
+    on.exit(devAskNewPage(oask), add = TRUE)
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 7. one page per event
+  ## ------------------------------------------------------------------
+  out <- vector("list", n_case)
+  names(out) <- x$case_model[case]
+  for (ci in seq_len(n_case)) {
+    out[[ci]] <- vector("list", n_event)
+    names(out[[ci]]) <- paste("event", event)
+  }
+  
+  for (ei in seq_len(n_event)) {
+    ev <- event[ei]
+    k  <- match(ev, mapping)
+    
+    cs_l <- lapply(seq_len(n_case), function(ci) cs_resid(case[ci], k))
+    for (ci in seq_len(n_case)) out[[ci]][[ei]] <- cs_l[[ci]]
+    
+    na_l <- lapply(seq_len(n_case), function(ci)
+      na_curve(cs_l[[ci]], x$case_model[case[ci]]))
+    
+    ## common square range so that the reference line is a true diagonal
+    rng <- c(unlist(lapply(cs_l, function(d) d$resid[is.finite(d$resid)])),
+             unlist(lapply(na_l, function(g) if (is.null(g)) NULL else g$H)))
+    rng <- rng[is.finite(rng)]
+    top <- if (length(rng)) max(rng) else 1
+    if (!is.finite(top) || top <= 0) top <- 1
+    xl <- if (is.null(xlim)) c(0, top) else xlim
+    yl <- if (is.null(ylim)) c(0, top) else ylim
+    
+    main_p <- if (is.null(main)) paste("Cox-Snell residuals : event", ev)
+    else rep(main, length.out = n_event)[ei]
+    
+    plot(xl, yl, type = "n", xlab = xlab, ylab = ylab, main = main_p, ...)
+    abline(0, 1, col = ref.col, lty = ref.lty)
+    
+    for (ci in seq_len(n_case)) {
+      g <- na_l[[ci]]
+      if (is.null(g)) next
+      if (isTRUE(conf.int)) {
+        lines(g$time, g$lo, type = "s", lty = 3, col = color[ci], lwd = 1)
+        lines(g$time, g$hi, type = "s", lty = 3, col = color[ci], lwd = 1)
+      }
+      lines(g$time, g$H, type = "s", lty = lty[ci], col = color[ci], lwd = lwd)
+    }
+    
+    if (isTRUE(legend)) {
+      lg  <- if (n_case == 1) "Nelson-Aalen of residuals"
+      else paste("case", case)
+      lgc <- c(color, ref.col)
+      lgl <- c(lty, ref.lty)
+      lgw <- c(rep(lwd, n_case), 1)
+      legend(legend.pos, legend = c(lg, "45-degree line"),
+             col = lgc, lty = lgl, lwd = lgw, bty = "n")
+    }
+  }
+  
+  invisible(out)
+}
+
 
 #' Summarize a Fitted Parametric Competing Risks Regression Model
 #'
@@ -804,7 +1083,10 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #' adequate. The test is omitted for \code{"gompertz2"} and \code{"logistic"} fits.
 #' 
 #' @param object object of class \code{"pcrr"}.
-#' @param conf_int confidence level for confidence intervals. The default is \code{0.95}.
+#' @param case integer vector selecting the transformation-model cases to use,
+#'  numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
+#'  every available case is used.
+#' @param conf.level confidence level for confidence intervals. The default is \code{0.95}.
 #' @param digits number of digits to print.
 #' @param ... further arguments passed to or from other methods.
 #'
@@ -824,87 +1106,175 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #' \code{\link{print.summary.pcrr}}
 #'
 #' @export
-summary.pcrr <- function(object, conf_int = 0.95, digits = max(options()$digits - 4, 3), ...){
-  est <- object$coef
-  se  <- sqrt(diag(object$invinf))
-  zst <- est / se
-  pv  <- 2 * (1 - pnorm(abs(zst)))
+summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(options()$digits - 4, 3), ...){
+  
+  if (is.null(object$hess_case_all)) {
+    message("Please set `variance = TRUE` to perform this operation.")
+    return(invisible(object))
+  }
+  
+  mapping <- object$mapping
+  
+  case_all <- object$case_all
+  n_case_all <- nrow(case_all)
+
+  
+  if (is.null(case)) {
+    case <- seq_len(n_case_all)
+  } else if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+             any(case != floor(case)) || any(case < 1) || any(case > n_case_all)) {
+    stop("Please specify `case` correctly.\n\nThe possible model cases are as follows :\n",
+         paste(object$case_model, collapse = "\n"))
+  }
+  case   <- as.integer(case)
+  n_case <- length(case)
+  
+  
+  model <- object$case_model
   
   K <- object$k
   P <- object$p
   
   if (object$distribution == "gompertz2"){
+    n_param <- K * (3 + P)
     idx_alpha <- (seq_len(K) - 1) * (3 + P) + 1
     idx_rho   <- (seq_len(K) - 1) * (3 + P) + 2
     idx_tau   <- (seq_len(K) - 1) * (3 + P) + 3
     idx_nonbeta <- c(idx_alpha, idx_rho, idx_tau)
   } else if (object$distribution == "gompertz3"){
+    n_param <- K * (4 + P)
     idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
     idx_rho   <- (seq_len(K) - 1) * (4 + P) + 2
     idx_tau   <- (seq_len(K) - 1) * (4 + P) + 3
     idx_eta   <- (seq_len(K) - 1) * (4 + P) + 4
     idx_nonbeta <- c(idx_alpha, idx_rho, idx_tau, idx_eta)
   } else if (object$distribution == "logistic"){
+    n_param <- K * (4 + P)
     idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
     idx_b   <- (seq_len(K) - 1) * (4 + P) + 2
     idx_c   <- (seq_len(K) - 1) * (4 + P) + 3
     idx_p   <- (seq_len(K) - 1) * (4 + P) + 4
     idx_nonbeta <- c(idx_alpha, idx_b, idx_c, idx_p)
   }
-  
-  is_alpha <- logical(length(est))
+  is_alpha <- logical(n_param)
   is_alpha[idx_alpha] <- TRUE
-  is_beta  <- rep(TRUE, length(est))
+  is_beta  <- rep(TRUE, n_param)
   is_beta[idx_nonbeta] <- FALSE
+  is_beta <- is_beta[!is_alpha]
   
-  # Regression coefficient table
-  coef_tab <- cbind(est[is_beta], exp(est[is_beta]), se[is_beta], zst[is_beta], pv[is_beta])
-  dimnames(coef_tab) <- list(names(est)[is_beta], c("coef", "exp(coef)", "se(coef)", "z value", "Pr(>|z|)"))
   
-  # Confidence interval
-  a  <- (1 - conf_int) / 2
-  a  <- c(a, 1 - a)
-  zq <- qnorm(a)
-  ci_tab <- cbind(exp(est[is_beta]), exp(-est[is_beta]),
-                  exp(est[is_beta] + zq[1] * se[is_beta]),
-                  exp(est[is_beta] + zq[2] * se[is_beta]))
-  dimnames(ci_tab) <- list(names(est)[is_beta],
-                           c("exp(coef)", "exp(-coef)",
-                             paste0(format(100 * a, trim = TRUE, digits = 4), "%")))
-  
-  # Basis parameters (alpha, rho, tau)
-  base_tab <- cbind(est[!is_beta], se[!is_beta], zst[!is_beta], pv[!is_beta])
-  dimnames(base_tab) <- list(names(est)[!is_beta], c("est", "se", "z value", "Pr(>|z|)"))
-  
-  # # Model assumption testing : H0: alpha=0 -> PH,  alpha=1 -> PO.
-  # z_ph <- (est[is_alpha] - 0) / se[is_alpha]
-  # z_po <- (est[is_alpha] - 1) / se[is_alpha]
-  # link_ph <- cbind(est = est[is_alpha], `z value` = z_ph, `Pr(>|z|)` = 2 * (1 - pnorm(abs(z_ph))))
-  # link_po <- cbind(est = est[is_alpha], `z value` = z_po, `Pr(>|z|)` = 2 * (1 - pnorm(abs(z_po))))
 
+  inf <- vector("list", n_case)
+  invinf <- vector("list", n_case)
 
-  # Baseline shape test : H0 : eta = 0, under which gompertz3 reduces to gompertz2
-  shape_tab <- NULL
-  if (object$distribution == "gompertz3"){
-    z_eta <- est[idx_eta] / se[idx_eta]
-    shape_tab <- cbind(est = est[idx_eta], se = se[idx_eta], `z value` = z_eta, `Pr(>|z|)` = 2 * (1 - pnorm(abs(z_eta))))
+  
+  for (j in 1:n_case) {
+    i <- case[j]
+    inf[[j]] <- -object$hess_case_all[[i]]
+    invinf[[j]] <- tryCatch(solve(inf[[j]]), error = function(e) {
+                              warning("Hessian matrix is singular or non-invertible. (", model[i], ")")
+                              matrix(NA_real_, nrow(inf[[j]]), ncol(inf[[j]]),
+                                     dimnames = dimnames(inf[[j]]))
+                            })
   }
   
+  
+  mle_case_all <- object$mle_case_all
+  
+  converged <- vector("list", n_case)
+  message <- vector("list", n_case)
+  loglik <- vector("list", n_case)
+  iter <- vector("list", n_case)
+  names(converged) <- model[case]
+  names(message) <- model[case]
+  names(loglik) <- model[case]
+  names(iter) <- model[case]
+  for (j in 1:n_case) {
+    i <- case[j]
+    converged[[j]] <- ifelse(mle_case_all[[i]]$convergence, FALSE, TRUE) 
+    message[[j]] <- mle_case_all[[i]]$message
+    loglik[[j]] <- if(!is.finite(mle_case_all[[i]]$objective) || mle_case_all[[i]]$objective == 1e+100) NaN else -mle_case_all[[i]]$objective
+    iter[[j]] <- mle_case_all[[i]]$iterations
+  }
+
+  
+  coef_tab <- vector("list", n_case)
+  ci_tab <- vector("list", n_case)
+  base_tab <- vector("list", n_case)
+
+  names(coef_tab) <- model[case]
+  names(ci_tab) <- model[case]
+  names(base_tab) <- model[case]
+  
+  if (object$distribution == "gompertz3") {
+    idx_eta <- (seq_len(K) - 1) * (3 + P) + 3
+    shape_tab <- vector("list", n_case)
+    names(shape_tab) <- model[case]
+  } else shape_tab <- NULL
+  
+  for (j in 1:n_case) {
+    i <- case[j]
+    est <- mle_case_all[[i]]$par[!is_alpha]
+    
+    d <- diag(invinf[[j]])
+    names(d) <- rownames(invinf[[j]])
+    
+    se <- withCallingHandlers(
+      sqrt(d), warning = function(w) {
+        warning(paste0(model[i], "\n","  sqrt(diag()): ", conditionMessage(w), "\n",
+            "  diag():\n  ",paste(names(d), "=", format(d, digits = 6),collapse = "\n  ")),call. = FALSE)
+        invokeRestart("muffleWarning")
+      })
+    
+    zst <- est / se
+    pv  <- 2 * (1 - pnorm(abs(zst)))
+    
+    
+    # Regression coefficient table
+    coef_tab[[j]] <- cbind(est[is_beta], exp(est[is_beta]), se[is_beta], zst[is_beta], pv[is_beta])
+    dimnames(coef_tab[[j]]) <- list(names(est)[is_beta], c("coef", "exp(coef)", "se(coef)", "z value", "Pr(>|z|)"))
+    
+    # Confidence interval
+    a  <- (1 - conf.level) / 2
+    a  <- c(a, 1 - a)
+    zq <- qnorm(a)
+    ci_tab[[j]] <- cbind(exp(est[is_beta]), exp(-est[is_beta]),
+                    exp(est[is_beta] + zq[1] * se[is_beta]),
+                    exp(est[is_beta] + zq[2] * se[is_beta]))
+    dimnames(ci_tab[[j]]) <- list(names(est)[is_beta], c("exp(coef)", "exp(-coef)",
+                               paste0(format(100 * a, trim = TRUE, digits = 4), "%")))
+    
+    # Basis parameters
+    base_tab[[j]] <- cbind(est[!is_beta], se[!is_beta], zst[!is_beta], pv[!is_beta])
+    dimnames(base_tab[[j]]) <- list(names(est)[!is_beta], c("est", "se", "z value", "Pr(>|z|)"))
+    
+    
+    # Baseline shape test : H0 : eta = 0, under which gompertz3 reduces to gompertz2
+    if (object$distribution == "gompertz3"){
+      z_eta <- est[idx_eta] / se[idx_eta]
+      shape_tab[[j]] <- cbind(est = est[idx_eta], se = se[idx_eta], `z value` = z_eta, `Pr(>|z|)` = 2 * (1 - pnorm(abs(z_eta))))
+    }
+  }
+
+  
   out <- list(call = object$call,
-              converged = object$converged,
-              message = object$message,
               n = object$n,
               n_missing = object$n_missing,
-              loglik = object$loglik,
               distribution = object$distribution,
               mapping = object$mapping,
               digits = digits,
+              case = case,
+              case_model = object$case_model,
+              converged = converged,
+              message = message,
+              loglik = loglik,
+              iter = iter,
+              inf = inf,
+              invinf = invinf,
               coef = coef_tab,
               conf_int = ci_tab,
               baseline = base_tab,
-              shape = shape_tab,
-              link_ph = NULL,
-              link_po = NULL
+              shape = shape_tab
   )
   class(out) <- "summary.pcrr"
   out
@@ -924,105 +1294,82 @@ summary.pcrr <- function(object, conf_int = 0.95, digits = max(options()$digits 
 #' The summary is printed. The function returns the input object invisibly.
 #'
 #' @seealso
-#' \code{\link{pcrr}}, 
+#' \code{\link{pcrr}},
 #' \code{\link{summary.pcrr}}
 #'
 #' @export
 print.summary.pcrr <- function(x, digits = x$digits, ...){
-  cat("Parametric Competing Risks Regression\n\n")
-  if (!is.null(x$call)){ cat("Call:\n"); dput(x$call); cat("\n") }
-  if (!x$converged){ cat("pcrr converged:", x$converged, "\n", "[", x$message, "]\n"); return(invisible()) }
+  savedig <- options(digits = digits)
+  on.exit(options(savedig))
   
-  savedig <- options(digits = digits); on.exit(options(savedig))
-  cat("========================================\n")
+  cat("Parametric Competing Risks Regression\n\n")
+  
+  if (!is.null(x$call)){ 
+    cat("Call:\n")
+    dput(x$call)}
+ 
+  cat("\n========================================\n")
   cat("Baseline distribution:", x$distribution, "\n")
-  cat("========================================\n")
   cat("Event codes: ", x$mapping[1], " = failure of interest",
       if (length(x$mapping) > 1)
-        paste0(",    ", paste(x$mapping[-1], collapse = ", "), " = competing"),
-      "\n\n\n", sep = "")
-  cat("Regression coefficients:\n")
-  printCoefmat(x$coef, digits = digits, signif.stars = TRUE, na.print = "",
-               has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:3, tst.ind = 4)
-  cat("\n")
-  cat("----------------------------------------\n\n")
-  print(x$conf_int, na.print = "");        cat("\n");
-  cat("========================================\n\n")
-  cat("Parameters:\n")
-  printCoefmat(x$baseline, digits = digits, signif.stars = TRUE, na.print = "",
-               has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
-  cat("\n")
-  # 
-  # # Model assumption tests
-  # if (!is.null(x$link_ph) || !is.null(x$link_po)){
-  #   cat("\n")
-  #   cat("========================================\n")
-  #   cat("Model assumption tests\n")
-  #   cat("========================================\n\n")
-  # 
-  #   if (!is.null(x$link_ph)){
-  #     cat("[Proportional Hazards]\n")
-  #     cat("H0: alpha = 0\n\n")
-  # 
-  #     printCoefmat(
-  #       x$link_ph,
-  #       digits = digits,
-  #       signif.stars = TRUE,
-  #       has.Pvalue = TRUE,
-  #       P.values = TRUE,
-  #       cs.ind = 1,
-  #       tst.ind = 2
-  #     )
-  # 
-  #     cat("\n----------------------------------------\n\n")
-  #   }
-  # 
-  #   if (!is.null(x$link_po)){
-  #     cat("[Proportional Odds]\n")
-  #     cat("H0: alpha = 1\n\n")
-  # 
-  #     printCoefmat(x$link_po,
-  #       digits = digits,
-  #       signif.stars = TRUE,
-  #       has.Pvalue = TRUE,
-  #       P.values = TRUE,
-  #       cs.ind = 1,
-  #       tst.ind = 2
-  #     )
-  # 
-  #     cat("\n")
-  #   }
-  # }
+        paste0("\n             ",paste0(x$mapping[-1], " = competing", collapse = "\n             ")),"\n",sep = "")
+  cat("========================================\n")
+
   
-  
-  # Baseline shape test
-  if (!is.null(x$shape)){
+  case <- x$case
+  for (j in 1:length(case)){
+    i <- case[j]
+    cat("\n\n\n========================================\n")
+    cat(x$case_model[i])
+    cat("\n========================================\n")
+    
+    if (!x$converged[[j]]){ 
+      cat("convergence : ", x$converged[[j]], "\n", "[", x$message[[j]], "]\n", sep = "")
+      next
+      }
+    
+    cat("\nRegression coefficients :\n\n")
+    printCoefmat(x$coef[[j]], digits = digits, signif.stars = TRUE, na.print = "",
+                 has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:3, tst.ind = 4)
     cat("\n")
-    cat("========================================\n")
-    cat("Baseline shape test\n")
-    cat("========================================\n\n")
-    
-    
-    cat("[Reduced to two-parameter Gompertz]\n")
-    cat("H0: eta = 0\n\n")
-    
-    printCoefmat(x$shape, digits = digits, signif.stars = TRUE, has.Pvalue = TRUE, 
-                 P.values = TRUE, cs.ind = 1, tst.ind = 2, na.print = "")
-    
+    cat("----------------------------------------\n\n")
+    print(x$conf_int[[j]], na.print = "");        cat("\n");
+    cat("----------------------------------------\n\n")
+    cat("Parameters :\n\n")
+    printCoefmat(x$baseline[[j]], digits = digits, signif.stars = TRUE, na.print = "",
+                 has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
     cat("\n")
+    
+    
+    # Baseline shape test
+    if (!is.null(x$shape)){
+      cat("----------------------------------------\n\n")
+      cat("Baseline shape test :\n")
+      #cat("[Reduced to two-parameter Gompertz]\n")
+      cat("H0 : eta = 0\n\n")
+      
+      printCoefmat(x$shape[[j]], digits = digits, signif.stars = TRUE, has.Pvalue = TRUE,
+                   P.values = TRUE, cs.ind = 1, tst.ind = 2, na.print = "")
+      
+      cat("\n")
+    }
+    
+    cat("----------------------------------------\n\n")
+    cat("convergence : ", x$converged[[j]], "  (iteration : ", x$iter[[j]], ")\n", sep = "")
+    cat("Log-likelihood =", format(x$loglik[[j]], nsmall = 4), "\n")
   }
-  
-  cat("========================================\n\n")
+
+  cat("\n\n========================================\n")
   cat("Num. cases =", x$n - x$n_missing)
-  
+
   if (x$n_missing > 0)
     cat(" (", x$n_missing,
         " cases omitted due to missing values)", sep = "")
-  
+
   cat("\n")
-  cat("Log-likelihood =", format(x$loglik, nsmall = 4), "\n")
+  
   invisible()
-}
+ }
 
 
 
@@ -1086,7 +1433,7 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #'
 #' For the three-parameter Modified Logistic distribution, a maximum
 #' of the baseline hazard exists when
-#' \eqn{\log\left(\frac{1+p_ke^{-b_kc_k}}{1-p_k}\right)\leq-2b_kc_k.}
+#' \eqn{\log\left(\frac{1+p_ke^{-b_kc_k}}{1-p_k}\right)\geq-2b_kc_k.}
 #' In this case, the baseline maximum hazard time is
 #' \deqn{x_{mh}^{base} =
 #' \dfrac{1}{2b_k}\log\left(\dfrac{1+p_ke^{-b_kc_k}}{1-p_k}\right)+c_k.}
@@ -1114,6 +1461,9 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #' @param times optional vector of time points at which predictions are
 #'  evaluated. If omitted, 200 equally spaced time points over the
 #'  observed time range are used.
+#' @param case integer vector selecting the transformation-model cases to use,
+#'  numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
+#'  every available case is used.
 #' @param event integer code identifying the event type for prediction.
 #'  If omitted, the first event type (the event of interest) in the fitted model is used.
 #' @param ... further arguments passed to or from other methods.
@@ -1154,11 +1504,9 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #' \code{\link{plot.predict.pcrr}}
 #'
 #' @export
-predict.pcrr <- function(object, cov, times = NULL, event = NULL, ...){
+predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, ...){
   P <- object$p
-  if (is.null(event)) event <- object$mapping[1]      # default : failcode
-  k <- match(event, object$mapping)
-  if (is.na(k)) stop("event must be one of: ", paste(object$mapping, collapse = ", "))
+  
   if (is.null(times)) times <- seq(0, object$maxtime, length.out = 200)
   
   if (!is.matrix(cov)) {
@@ -1170,7 +1518,40 @@ predict.pcrr <- function(object, cov, times = NULL, event = NULL, ...){
   if (!is.numeric(cov)) stop("cov must be numeric.")
   if (ncol(cov) != P) stop("cov must have ", P, " column(s).")
   
-
+  
+  # curve labels for the legend, e.g. "obs 1", "obs 2", ...
+  labs <- paste0("obs ", seq_len(nrow(cov)))
+  
+  case_all <- object$case_all
+  n_case_all <- nrow(case_all)
+  if (is.null(case)) {
+    case <- seq_len(n_case_all)
+  } else if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+             any(case != floor(case)) || any(case < 1) || any(case > n_case_all)) {
+    stop("Please specify `case` correctly.\n\nThe possible model cases are as follows :\n",
+         paste(object$case_model, collapse = "\n"))
+  }
+  case   <- as.integer(case)
+  n_case <- length(case)
+  
+  
+  mapping <- object$mapping
+  if (is.null(event)) {
+    event <- mapping
+  } else {
+    if (all(event %in% mapping)) {
+      event <- unique(event)
+    } else {
+      stop("`event` must be one or more of: ", paste(mapping, collapse = ", "), call. = FALSE)
+    }
+  }
+  
+  
+  model <- object$case_model
+  
+  
+  
+  
   
   if (object$distribution == "gompertz2" || object$distribution == "gompertz3"){
     u_k <- function(t, rho, tau, eta, tol){
@@ -1200,9 +1581,10 @@ predict.pcrr <- function(object, cov, times = NULL, event = NULL, ...){
   } else if (object$distribution == "logistic"){
     u_k <- function(t, b, c, p, tol){
       inner <- - p + p*(1+exp(-b*c))/(1+exp(b*(t-c)))
-      u <- rep(NaN, length(t))
-      valid <- 1 + inner > 0
-      u[valid] <- -log1p(inner[valid])
+      # u <- rep(NaN, length(t))
+      # valid <- 1 + inner > 0
+      # u[valid] <- -log1p(inner[valid])
+      u <- -log1p(inner)
       u
     }
     du_k <- function(t, b, c, p, tol){
@@ -1210,247 +1592,310 @@ predict.pcrr <- function(object, cov, times = NULL, event = NULL, ...){
       du
     }
   }
-  
-  
-  if (object$distribution == "gompertz2"){
-    alpha <- object$coef[(k - 1) * (3 + P) + 1]
-    rho   <- object$coef[(k - 1) * (3 + P) + 2]
-    tau   <- object$coef[(k - 1) * (3 + P) + 3]
-    eta   <- 0
-    beta  <- object$coef[((k - 1) * (3 + P) + 4):(k * (3 + P))]
-    
-    u <- u_k(times, rho, tau, eta, 1e-12)
-    base_haz <- du_k(times, rho, tau, eta, 1e-12)
-  } else if (object$distribution == "gompertz3"){
-    alpha <- object$coef[(k - 1) * (4 + P) + 1]
-    rho   <- object$coef[(k - 1) * (4 + P) + 2]
-    tau   <- object$coef[(k - 1) * (4 + P) + 3]
-    eta   <- object$coef[(k - 1) * (4 + P) + 4]
-    beta  <- object$coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
-    
-    u <- u_k(times, rho, tau, eta, 1e-12)
-    base_haz <- du_k(times, rho, tau, eta, 1e-12)
-  } else if (object$distribution == "logistic"){
-    alpha <- object$coef[(k - 1) * (4 + P) + 1]
-    b   <- object$coef[(k - 1) * (4 + P) + 2]
-    c   <- object$coef[(k - 1) * (4 + P) + 3]
-    p   <- object$coef[(k - 1) * (4 + P) + 4]
-    beta  <- object$coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
-    
-    u <- u_k(times, b, c, p, 1e-12)
-    base_haz <- du_k(times, b, c, p, 1e-12)
-  }
-  
-  
-  
-  # CIF
-  alpha_tol <- 1e-8
-  cif <- matrix(0, nrow = length(times), ncol = nrow(cov))
-  for (j in seq_len(nrow(cov))){
-    ezb <- exp(sum(cov[j, ] * beta))
-    if (abs(alpha) < alpha_tol){
-      cif[, j] <- 1.0 - exp(-ezb * u)
-      next
-    }
-    base <- 1.0 + alpha * ezb * u
-    valid <- (!is.nan(u)) & (base > 1e-12)
-    cif[valid, j] <- 1.0 - base[valid]^(-1.0 / alpha)
-    cif[!valid, j] <- 1.0 # treat undefined region as CIF = 1
-    if (any(!valid)){
-      undef_t <- times[which(!valid)[1]]
-      warning("CIF cannot be evaluated after time ", undef_t, " for obs ", j, ".")
-    }
-  }
-  
- 
-  # maximum baseline hazard rate
-  xmh_base <- NULL
-  if (object$distribution == "gompertz3"){
-    if ((rho > 0 && eta > -1 && eta < 0) || (rho < 0 && eta < -1)){
-      calc_xmh <- (1 / rho) * log(-1.0 / eta)
-      if (calc_xmh > 0) xmh_base <- unname(calc_xmh)
-    }
-  } else if (object$distribution == "logistic"){
-    if (p > 0 && p < 1){
-      calc_xmh <- (log1p(p*exp(-b * c)) - log1p(-p)) / (2 * b) + c
-      if (calc_xmh > 0) xmh_base <- unname(calc_xmh)
-    }
-  }
-  
-  
-  # subdistribution hazard
-  sub_haz  <- matrix(0, nrow = length(times), ncol = nrow(cov))
-  for (j in seq_len(nrow(cov))){
-    ezb <- exp(sum(cov[j, ] * beta))
-    base <- 1.0 + alpha * ezb * u
-    valid <- (!is.nan(u)) & (base > 1e-12)
-    sub_haz[valid, j] <- ezb * base_haz[valid] / base[valid]
-    sub_haz[!valid, j] <- NA_real_ # treat undefined region as NA for prediction
-    if (any(!valid)){
-      undef_t <- times[which(!valid)[1]]
-      warning("Subdistribution Hazard cannot be evaluated after time ", undef_t, " for obs ", j, ".")
-    }
-  }
-  
-  
-  
-  # boundary time 
-  t_boundary <- rep(Inf, nrow(cov))
-  
-  if (object$distribution == "gompertz2" || object$distribution == "gompertz3") {
-    # the time when 1 + alpha * ezb * u(t) = 0
-    for (j in seq_len(nrow(cov))){
-      ezb <- exp(sum(cov[j, ] * beta))
-      if (alpha < 0){
-        if ((rho == 0 || (rho > 0 && eta >= 0)) # u(Inf) -> Inf
-            || (rho < 0 && 1 + alpha * ezb * u_k(Inf, rho, tau, eta, 1e-12) < 0)
-            || (rho > 0 && eta < 0 && 1 + alpha * ezb * u_k(Inf, rho, tau, eta, 1e-12) < 0)){
-          inner <- function(t, alpha, rho, tau, eta, ezb){
-            u <- u_k(t, rho, tau, eta, 1e-12)
-            1 + alpha * ezb * u
-          }
-          time_inner <- max(times)
-          upper <- inner(time_inner, alpha, rho, tau, eta, ezb)
-          iter <- 0
-          while (upper > 0){
-            time_inner <- time_inner * 10
-            upper <- inner(time_inner, alpha, rho, tau, eta, ezb)
-            iter <- iter + 1
-            if(iter > 20) break
-          }
-          if (iter < 20){
-            res <- tryCatch(uniroot(inner, interval = c(0, time_inner), tol = 1e-12, alpha = alpha, rho = rho, tau = tau, eta = eta, ezb = ezb), 
-                            error = function(e) NULL)
-            if (!is.null(res)) t_boundary[j] <- res$root
-          } 
-        }
-      }
-    }
-  } else if (object$distribution == "logistic"){
-    for (j in seq_len(nrow(cov))){
-      ezb <- exp(sum(cov[j, ] * beta))
-      if (alpha > 0 && p > 1) {
-        t_boundary[j] <- (log1p(p*exp(-b * c)) - log(p - 1)) / b + c
-      } else if (alpha < 0 && (p > 1 - exp(1/(alpha * ezb)))){
-        t_boundary[j] <- (log1p(p*exp(-b * c) - exp(1/(alpha * ezb))) - log(exp(1/(alpha * ezb)) + p - 1)) / b + c
-      } 
-    }
-  }
-  
-  
-  
-  # subdistribution hazard peak
-  xmh_obs <- NULL
-  if (object$distribution == "gompertz3"){
-    xmh_obs <- rep(NA_real_, nrow(cov))
-    
-    lambda_prime <- function(t, alpha, rho, tau, eta, ezb){
-      u <- u_k(t, rho, tau, eta, 1e-12)
-      du <- du_k(t, rho, tau, eta, 1e-12)
-      rho * (1 + eta * exp(rho * t)) * (1 + alpha * ezb * u) - alpha * ezb * du
-    }
-    
-    for (j in seq_len(nrow(cov))){
-      ezb <- exp(sum(cov[j, ] * beta))
 
-      lambda_prime_t0 <- lambda_prime(0, alpha, rho, tau, eta, ezb)
-      if (abs(lambda_prime_t0) < 1e-12) {xmh_obs[j] <- 0; next}
-      if (is.finite(t_boundary[j])) {
-        lambda_prime_t_max <- lambda_prime(t_boundary[j], alpha, rho, tau, eta, ezb)
-        if (lambda_prime_t0 * lambda_prime_t_max > 0) next
-      } else {
-        if (!((eta > 0 && lambda_prime_t0 < 0) || (eta < 0 && lambda_prime_t0 > 0))) next
+  
+  tol <- 1e-12
+  
+  
+
+  
+  
+  pred_list <- vector("list", n_case)
+  base_haz_list <- vector("list", n_case)
+  sub_haz_list <- vector("list", n_case)
+  xmh_base_list <- vector("list", n_case)
+  xmh_obs_list <- vector("list", n_case)
+  t_boundary_list <- vector("list", n_case)
+  eta_list <- vector("list", n_case)
+  
+  names(pred_list) <- model[case]
+  names(base_haz_list) <- model[case]
+  names(sub_haz_list) <- model[case]
+  names(xmh_base_list) <- model[case]
+  names(xmh_obs_list) <- model[case]
+  names(t_boundary_list) <- model[case]
+  names(eta_list) <- model[case]
+  
+  for (l in 1:n_case) {
+    i <- case[l]
+    coef <- object$mle_case_all[[i]]$par
+    
+    pred_list[[l]] <- vector("list", length(event))
+    base_haz_list[[l]] <- vector("list", length(event))
+    sub_haz_list[[l]] <- vector("list", length(event))
+    xmh_base_list[[l]] <- vector("list", length(event))
+    xmh_obs_list[[l]] <- vector("list", length(event))
+    t_boundary_list[[l]] <- vector("list", length(event))
+
+    
+    names(pred_list[[l]]) <- paste0("event ", event)
+    names(base_haz_list[[l]]) <- paste0("event ", event)
+    names(sub_haz_list[[l]]) <- paste0("event ", event)
+    names(xmh_base_list[[l]]) <- paste0("event ", event)
+    names(xmh_obs_list[[l]]) <- paste0("event ", event)
+    names(t_boundary_list[[l]]) <- paste0("event ", event)
+    
+    if (object$distribution == "gompertz3") {
+      eta_list[[l]] <- vector("list", length(event))
+      names(eta_list[[l]]) <- paste0("event ", event)
+    }
+    
+    for (e in 1:length(event)) {
+      k <- match(event[e], mapping)
+      
+      if (object$distribution == "gompertz2"){
+        alpha <- coef[(k - 1) * (3 + P) + 1]
+        rho   <- coef[(k - 1) * (3 + P) + 2]
+        tau   <- coef[(k - 1) * (3 + P) + 3]
+        eta   <- 0
+        beta  <- coef[((k - 1) * (3 + P) + 4):(k * (3 + P))]
+        
+        u <- u_k(times, rho, tau, eta, tol)
+        base_haz <- du_k(times, rho, tau, eta, tol)
+      } else if (object$distribution == "gompertz3"){
+        alpha <- coef[(k - 1) * (4 + P) + 1]
+        rho   <- coef[(k - 1) * (4 + P) + 2]
+        tau   <- coef[(k - 1) * (4 + P) + 3]
+        eta   <- coef[(k - 1) * (4 + P) + 4]
+        beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+        
+        u <- u_k(times, rho, tau, eta, tol)
+        base_haz <- du_k(times, rho, tau, eta, tol)
+      } else if (object$distribution == "logistic"){
+        alpha <- coef[(k - 1) * (4 + P) + 1]
+        b   <- coef[(k - 1) * (4 + P) + 2]
+        c   <- coef[(k - 1) * (4 + P) + 3]
+        p   <- coef[(k - 1) * (4 + P) + 4]
+        beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+        
+        u <- u_k(times, b, c, p, tol)
+        base_haz <- du_k(times, b, c, p, tol)
       }
       
-      if (is.finite(t_boundary[j])) {
-        t_max <- max(0, t_boundary[j]*(1-1e-8))
-      } else {
-        t_max <- max(times)
-        lambda_prime_t_max <- lambda_prime(t_max, alpha, rho, tau, eta, ezb)
-        iter <- 0
-        while (lambda_prime_t0 * lambda_prime_t_max > 0) {
-          t_max <- t_max * 10
-          lambda_prime_t_max <- lambda_prime(t_max, alpha, rho, tau, eta, ezb)
-          iter <- iter + 1
-          if(iter > 20){
-            t_max <- NA_real_
-            break
-          }
+      
+      
+      # CIF
+      alpha_tol <- 1e-8
+      cif <- matrix(0, nrow = length(times), ncol = nrow(cov))
+      for (j in seq_len(nrow(cov))){
+        ezb <- exp(sum(cov[j, ] * beta))
+        if (abs(alpha) < alpha_tol){
+          cif[, j] <- 1.0 - exp(-ezb * u)
+          next
+        }
+        base <- 1.0 + alpha * ezb * u
+        valid <- (!is.nan(u)) & (base > tol)
+        cif[valid, j] <- 1.0 - base[valid]^(-1.0 / alpha)
+        cif[!valid, j] <- 1.0 # treat undefined region as CIF = 1
+        if (any(!valid)){
+          undef_t <- times[which(!valid)[1]]
+          warning(model[i], "\nCIF cannot be evaluated after time ", undef_t, " for observation ", j, " (event ", event[e], ").", call. = FALSE)
         }
       }
-      if (!is.finite(t_max)) next
-      res <- tryCatch(uniroot(lambda_prime, c(0, t_max), tol = 1e-12, alpha = alpha, rho = rho, tau = tau, eta = eta, ezb = ezb),
-                      error = function(e) {warning("Failed to find root: ", conditionMessage(e)); NULL})
-      if (is.null(res)) next
-      xmh_obs[j] <- res$root
-    }
-    
-    names(xmh_obs) <- paste0("obs ", seq_len(nrow(cov)))
-    
-  } else if (object$distribution == "logistic"){
-    xmh_obs <- rep(NA_real_, nrow(cov))
-    
-    lambda_prime <- function(t, alpha, b, c, p, ezb){
-      u <- u_k(t, b, c, p, 1e-12)
-      du <- du_k(t, b, c, p, 1e-12)
-      b*(1+p*exp(-b*c)-(1-p)*exp(2*b*(t-c)))/((1+exp(b*(t-c)))*(1+p*exp(-b*c)+(1-p)*exp(b*(t-c)))) * (1 + alpha * ezb * u) - alpha * ezb * du
-    }
-    
-    for (j in seq_len(nrow(cov))){
-      ezb <- exp(sum(cov[j, ] * beta))
-
-      # condition of unimodal
-      if (alpha * ezb * p < exp(b*c) + p - 1){
-        lambda_prime_t0 <- lambda_prime(0, alpha, b, c, p, ezb)
-        if (is.finite(t_boundary[j])) {
-          t_max <- max(0, t_boundary[j]*(1-1e-8))
-        } else {
-          t_max <- max(times)
-          lambda_prime_t_max <- lambda_prime(t_max, alpha, b, c, p, ezb)
-          iter <- 0
-          while (lambda_prime_t0 * lambda_prime_t_max > 0) {
-            t_max <- t_max * 10
-            lambda_prime_t_max <- lambda_prime(t_max, alpha, b, c, p, ezb)
-            iter <- iter + 1
-            if(iter > 20){
-              t_max <- NA_real_
-              break
+      
+      
+      
+      
+      # maximum baseline hazard rate
+      xmh_base <- NA_real_
+      if (object$distribution == "gompertz3"){
+        if ((rho > 0 && eta > -1 && eta < 0) || (rho < 0 && eta < -1)){
+          calc_xmh <- (1 / rho) * log(-1.0 / eta)
+          if (calc_xmh > 0) xmh_base <- unname(calc_xmh)
+        }
+      } else if (object$distribution == "logistic"){
+        if (p > 0 && p < 1){
+          calc_xmh <- (log1p(p*exp(-b * c)) - log1p(-p)) / (2 * b) + c
+          if (calc_xmh > 0) xmh_base <- unname(calc_xmh)
+        }
+      }
+      
+      
+      # subdistribution hazard
+      sub_haz  <- matrix(0, nrow = length(times), ncol = nrow(cov))
+      for (j in seq_len(nrow(cov))){
+        ezb <- exp(sum(cov[j, ] * beta))
+        base <- 1.0 + alpha * ezb * u
+        valid <- (!is.nan(u)) & (base > tol)
+        sub_haz[valid, j] <- ezb * base_haz[valid] / base[valid]
+        sub_haz[!valid, j] <- NA_real_ # treat undefined region as NA for prediction
+        if (any(!valid)){
+          undef_t <- times[which(!valid)[1]]
+          warning(model[i], "\nSubdistribution Hazard cannot be evaluated after time ", undef_t, " for observation ", j, " (event ", event[e], ").", call. = FALSE)
+        }
+      }
+      
+      
+      
+      # boundary time 
+      t_boundary <- rep(Inf, nrow(cov))
+      
+      if (object$distribution == "gompertz2" || object$distribution == "gompertz3") {
+        # the time when 1 + alpha * ezb * u(t) = 0
+        for (j in seq_len(nrow(cov))){
+          ezb <- exp(sum(cov[j, ] * beta))
+          if (alpha < 0){
+            if ((rho == 0 || (rho > 0 && eta >= 0)) # u(Inf) -> Inf
+                || (rho < 0 && 1 + alpha * ezb * u_k(Inf, rho, tau, eta, tol) < 0)
+                || (rho > 0 && eta < 0 && 1 + alpha * ezb * u_k(Inf, rho, tau, eta, tol) < 0)){
+              inner <- function(t, alpha, rho, tau, eta, ezb){
+                u <- u_k(t, rho, tau, eta, tol)
+                1 + alpha * ezb * u
+              }
+              time_inner <- max(times)
+              upper <- inner(time_inner, alpha, rho, tau, eta, ezb)
+              iter <- 0
+              while (upper > 0){
+                time_inner <- time_inner * 10
+                upper <- inner(time_inner, alpha, rho, tau, eta, ezb)
+                iter <- iter + 1
+                if(iter > 20) break
+              }
+              if (iter < 20){
+                res <- tryCatch(uniroot(inner, interval = c(0, time_inner), tol = tol, alpha = alpha, rho = rho, tau = tau, eta = eta, ezb = ezb), 
+                                error = function(e) NULL)
+                if (!is.null(res)) t_boundary[j] <- res$root
+              } 
             }
           }
         }
-        if (!is.finite(t_max)) next
-        res <- tryCatch(uniroot(lambda_prime, c(0, t_max), tol = 1e-12, alpha = alpha, b = b, c = c, p = p, ezb = ezb),
-                        error = function(e) {warning("Failed to find root: ", conditionMessage(e)); NULL})
-        if (is.null(res)) next
-        xmh_obs[j] <- res$root
-      } else if (abs(exp(b*c) + p *(1 - alpha * ezb) -1) < 1e-12) {
-        xmh_obs[j] <- 0
+      } else if (object$distribution == "logistic"){
+        for (j in seq_len(nrow(cov))){
+          ezb <- exp(sum(cov[j, ] * beta))
+          if (alpha < 0 && (p > 1 - exp(1/(alpha * ezb)))){
+            t_boundary[j] <- (log1p(p*exp(-b * c) - exp(1/(alpha * ezb))) - log(exp(1/(alpha * ezb)) + p - 1)) / b + c
+          } # else if (alpha > 0 && p > 1) {
+          #  t_boundary[j] <- (log1p(p*exp(-b * c)) - log(p - 1)) / b + c
+          #}
+        }
       }
-    }
-    names(xmh_obs) <- paste0("obs ", seq_len(nrow(cov)))
-  }
-  
-  colnames(sub_haz) <- paste0("obs ", seq_len(nrow(cov)))
-  names(t_boundary) <- paste0("obs ", seq_len(nrow(cov)))
-  
-  
-  
-  # curve labels for the legend, e.g. "obs 1", "obs 2", ...
-  labs <- paste0("obs ", seq_len(nrow(cov)))
-  pred <- cbind(times, cif)
-  colnames(pred) <- c("time", labs)
-  base_haz <- cbind(time = times, `baseline hazard` = base_haz)
-  sub_haz <- cbind(time = times, sub_haz)
+      
+      
+      
+      # subdistribution hazard peak
+      xmh_obs <- rep(NA_real_, nrow(cov))
+      if (object$distribution == "gompertz3"){
 
-  out <- list(pred = pred,
-              baseline_hazard = base_haz,
-              subdistribution_hazard = sub_haz,
-              xmh_base = xmh_base,
-              xmh_obs = xmh_obs,
-              t_boundary = t_boundary,
+        lambda_prime <- function(t, alpha, rho, tau, eta, ezb){
+          u <- u_k(t, rho, tau, eta, tol)
+          du <- du_k(t, rho, tau, eta, tol)
+          rho * (1 + eta * exp(rho * t)) * (1 + alpha * ezb * u) - alpha * ezb * du
+        }
+        
+        for (j in seq_len(nrow(cov))){
+          ezb <- exp(sum(cov[j, ] * beta))
+          
+          lambda_prime_t0 <- lambda_prime(0, alpha, rho, tau, eta, ezb)
+          if (abs(lambda_prime_t0) < tol) {xmh_obs[j] <- 0; next}
+          if (is.finite(t_boundary[j])) {
+            lambda_prime_t_max <- lambda_prime(t_boundary[j], alpha, rho, tau, eta, ezb)
+            if (lambda_prime_t0 * lambda_prime_t_max > 0) next
+          } else {
+            if (!((eta > 0 && lambda_prime_t0 < 0) || (eta < 0 && lambda_prime_t0 > 0))) next
+          }
+          
+          if (is.finite(t_boundary[j])) {
+            t_max <- max(0, t_boundary[j]*(1-1e-8))
+          } else {
+            t_max <- max(times)
+            lambda_prime_t_max <- lambda_prime(t_max, alpha, rho, tau, eta, ezb)
+            iter <- 0
+            while (lambda_prime_t0 * lambda_prime_t_max > 0) {
+              t_max <- t_max * 10
+              lambda_prime_t_max <- lambda_prime(t_max, alpha, rho, tau, eta, ezb)
+              iter <- iter + 1
+              if(iter > 20){
+                t_max <- NA_real_
+                break
+              }
+            }
+          }
+          if (!is.finite(t_max)) next
+          res <- tryCatch(uniroot(lambda_prime, c(0, t_max), tol = tol, alpha = alpha, rho = rho, tau = tau, eta = eta, ezb = ezb),
+                          error = function(e) {warning("Failed to find root: ", conditionMessage(e)); NULL})
+          if (is.null(res)) next
+          xmh_obs[j] <- res$root
+        }
+        
+        names(xmh_obs) <- paste0("obs ", seq_len(nrow(cov)))
+        
+      } else if (object$distribution == "logistic"){
+
+        lambda_prime <- function(t, alpha, b, c, p, ezb){
+          u <- u_k(t, b, c, p, tol)
+          du <- du_k(t, b, c, p, tol)
+          b*(1+p*exp(-b*c)-(1-p)*exp(2*b*(t-c)))/((1+exp(b*(t-c)))*(1+p*exp(-b*c)+(1-p)*exp(b*(t-c)))) * (1 + alpha * ezb * u) - alpha * ezb * du
+        }
+        
+        for (j in seq_len(nrow(cov))){
+          ezb <- exp(sum(cov[j, ] * beta))
+          
+          # condition of unimodal
+          if (alpha * ezb * p < exp(b*c) + p - 1){
+            lambda_prime_t0 <- lambda_prime(0, alpha, b, c, p, ezb)
+            if (is.finite(t_boundary[j])) {
+              t_max <- max(0, t_boundary[j]*(1-1e-8))
+            } else {
+              t_max <- max(times)
+              lambda_prime_t_max <- lambda_prime(t_max, alpha, b, c, p, ezb)
+              iter <- 0
+              while (lambda_prime_t0 * lambda_prime_t_max > 0) {
+                t_max <- t_max * 10
+                lambda_prime_t_max <- lambda_prime(t_max, alpha, b, c, p, ezb)
+                iter <- iter + 1
+                if(iter > 20){
+                  t_max <- NA_real_
+                  break
+                }
+              }
+            }
+            if (!is.finite(t_max)) next
+            res <- tryCatch(uniroot(lambda_prime, c(0, t_max), tol = tol, alpha = alpha, b = b, c = c, p = p, ezb = ezb),
+                            error = function(e) {warning("Failed to find root: ", conditionMessage(e)); NULL})
+            if (is.null(res)) next
+            xmh_obs[j] <- res$root
+          } else if (abs(exp(b*c) + p *(1 - alpha * ezb) -1) < tol) {
+            xmh_obs[j] <- 0
+          }
+        }
+        names(xmh_obs) <- paste0("obs ", seq_len(nrow(cov)))
+      }
+      
+      colnames(sub_haz) <- paste0("obs ", seq_len(nrow(cov)))
+      names(t_boundary) <- paste0("obs ", seq_len(nrow(cov)))
+      
+
+      pred <- cbind(times, cif)
+      colnames(pred) <- c("time", labs)
+      base_haz <- cbind(time = times, `baseline hazard` = base_haz)
+      sub_haz <- cbind(time = times, sub_haz)
+      
+      
+      
+      pred_list[[l]][[e]] <- pred
+      base_haz_list[[l]][[e]] <- base_haz
+      sub_haz_list[[l]][[e]] <- sub_haz
+      xmh_base_list[[l]][[e]] <- xmh_base
+      xmh_obs_list[[l]][[e]] <- xmh_obs
+      t_boundary_list[[l]][[e]] <- t_boundary
+      if (object$distribution == "gompertz3") eta_list[[l]][[e]] <- eta
+      
+    }
+
+  }
+
+
+  out <- list(pred = pred_list,
+              baseline_hazard = base_haz_list,
+              subdistribution_hazard = sub_haz_list,
+              xmh_base = xmh_base_list,
+              xmh_obs = xmh_obs_list,
+              t_boundary = t_boundary_list,
               distribution = object$distribution,
-              eta = if(object$distribution=="gompertz3") eta else NULL,
+              eta = if(object$distribution=="gompertz3") eta_list else NULL,
               labels = labs,
+              case_model = object$case_model,
+              case = case,
               event = event
               )
   
@@ -1475,210 +1920,395 @@ predict.pcrr <- function(object, cov, times = NULL, event = NULL, ...){
 #'
 #' @seealso
 #' \code{\link{pcrr}}, 
+#' \code{\link{plot.pcrr}},
 #' \code{\link{predict.pcrr}}
 #'
 #' @export
 print.predict.pcrr <- function(x, digits = 4, ...){
-  cat("Predicted Cumulative Incidence (Event: ", x$event, ")\n", sep = "")
   
-  if (x$distribution == "gompertz3"){
-    if (is.null(x$xmh_base)) {
-      cat("\nMaximum hazard rate time (baseline): None\n\n")
-    } else {
-      cat("\nMaximum hazard rate time (baseline)\n")
-      cat("  baseline :", format(round(x$xmh_base, digits)), "\n\n")
-    }
-    if (!is.null(x$xmh_obs)){
-      if (x$eta < 0){
-        cat("\nStationary point of subdistribution hazard\n")
-        cat("  Type: Maximum (unimodal)\n")
-      } else if (x$eta > 0){
-        cat("\nStationary point of subdistribution hazard\n")
-        cat("  Type: Minimum (U-shape)\n")
-      } else {
-        cat("\nStationary point of subdistribution hazard\n")
-        cat("  Type: Gompertz2 case (no stationary point)\n")
-      }
+  
+  cat("Predicted Cumulative Incidence")
+  
+  
+  for (l in 1:length(x$case)){
+    i <- x$case[l]
+    cat("\n\n========================================\n")
+    cat(x$case_model[i])
+    cat("\n========================================\n")
+    
+    for (e in 1:length(x$event)) {
       
-      for (j in seq_along(x$xmh_obs)){
-        cat(sprintf("  %-8s : %s\n",
-                    names(x$xmh_obs)[j],
-                    ifelse(is.finite(x$xmh_obs[j]),
-                           format(round(x$xmh_obs[j], digits)),
-                           "None")))
-      }
-    }
-  } else if (x$distribution == "logistic"){
-    if (is.null(x$xmh_base)) {
-      cat("\nMaximum hazard rate time (baseline): None\n\n")
-    } else {
-      cat("\nMaximum hazard rate time (baseline)\n")
-      cat("  baseline :", format(round(x$xmh_base, digits)), "\n\n")
-    }
-    if (!is.null(x$xmh_obs)){
-        cat("\nStationary point of subdistribution hazard\n")
-        cat("  Type: Maximum (unimodal)\n")
+      xmh_base_le   <- x$xmh_base[[l]][[e]]
+      xmh_obs_le <- x$xmh_obs[[l]][[e]]
+      
+      cat("\n[event : ", x$event[e], "]\n", sep = "")
       
       
-      for (j in seq_along(x$xmh_obs)){
-        cat(sprintf("  %-8s : %s\n",
-                    names(x$xmh_obs)[j],
-                    ifelse(is.finite(x$xmh_obs[j]),
-                           format(round(x$xmh_obs[j], digits)),
-                           "None")))
+      if (x$distribution == "gompertz3"){
+      
+        if (is.na(xmh_base_le)) {
+          cat("\nMaximum hazard rate time (baseline) : None\n")
+        } else {
+          cat("\nMaximum hazard rate time (baseline) :\n")
+          cat("  baseline :", format(round(xmh_base_le, digits)), "\n")
+        }
+        cat("\nStationary point of subdistribution hazard :\n")
+        if (any(is.finite(xmh_obs_le))){
+          if (x$eta[[l]][[e]] < 0){
+            cat("  Type : Maximum (unimodal)\n")
+          } else if (x$eta[[l]][[e]] > 0){
+            cat("  Type : Minimum (U-shape)\n")
+          } else {
+            cat("  Type : Gompertz2 case (no stationary point)\n")
+          }
+          
+          for (j in seq_along(xmh_obs_le)){
+            cat(sprintf("  %-8s : %s\n",
+                        names(xmh_obs_le)[j], ifelse(is.finite(xmh_obs_le[j]), 
+                                                              format(round(xmh_obs_le[j], digits)),"None")))}
+        } else {
+          cat("  (no stationary point found for given covariates)\n")
+        }
+        
+
+      
+      } else if (x$distribution == "logistic"){
+        
+        if (is.na(xmh_base_le)) {
+          cat("\nMaximum hazard rate time (baseline) : None\n")
+        } else {
+          cat("\nMaximum hazard rate time (baseline) :\n")
+          cat("  baseline :", format(round(xmh_base_le, digits)), "\n")
+        }
+        cat("\nStationary point of subdistribution hazard :\n")
+        if (any(is.finite(xmh_obs_le))){
+          cat("  Type : Maximum (unimodal)\n")
+          
+          for (j in seq_along(xmh_obs_le)){
+            cat(sprintf("  %-8s : %s\n", names(xmh_obs_le)[j],
+                        ifelse(is.finite(xmh_obs_le[j]),
+                               format(round(xmh_obs_le[j], digits)), "None")))
+          }
+        } else {
+          cat("  (no stationary point found for given covariates)\n")
+        }
+      }
+      
+      cat("\n\n")
+      print(x$pred[[l]][[e]], ...)
+      
+      if (e != length(x$event)){
+        cat("\n----------------------------------------\n")
       }
     }
+  
   }
-  cat("\n\n")
-  print(x$pred, ...)
+
   invisible(x)
 }
 
 #' Plot Predicted Cumulative Incidence Functions
 #'
-#' Plots cumulative incidence functions produced by \code{\link{predict.pcrr}}.
+#' Plots cumulative incidence functions and subdistribution hazards produced by
+#' \code{\link{predict.pcrr}}.
+#'
+#' @details
+#' A \code{"predict.pcrr"} object may hold several transformation-model cases and
+#' several event types. They are displayed differently, because they mean
+#' different things.
+#'
+#' \emph{Events} are distinct causes of failure, so they are never overlaid.
+#' One page is drawn per event. When more than one event is plotted on a
+#' single-panel device, the pages are shown one at a time in the manner of
+#' \code{\link[stats]{plot.lm}}; see \code{ask}.
+#'
+#' \emph{Cases} are the same data fitted under different PH/PO assumptions, so
+#' overlaying them is informative. By default only the first available case is
+#' drawn, with a message; specifying \code{case} explicitly overlays the
+#' requested cases in one set of panels. Covariate profiles are distinguished by
+#' \emph{color} and cases by \emph{line type}, so that a shared color means a
+#' shared covariate profile and the line type shows the modelling assumption.
+#'
+#' When the number of drawn curves exceeds \code{max.marks} the annotation is
+#' simplified automatically: the vertical reference lines at the hazard turning
+#' points are dropped (the points on the curves are kept) and the numeric
+#' \eqn{x_{mh}} values are removed from the legend.
 #'
 #' @param x object of class \code{"predict.pcrr"}.
-#' @param lty line types for curves.
-#' @param color line colors for curves.
-#' @param ylim limits for the y-axis.
+#' @param case integer vector of model cases to draw, using the case numbers
+#'  stored in \code{x$case}. If \code{NULL} (default) the first available case
+#'  is used and a message is issued when more than one is available. Several
+#'  cases are overlaid and distinguished by line type.
+#' @param event vector of event types to draw, using the codes stored in
+#'  \code{x$event}. If \code{NULL} (default) every stored event is drawn, one
+#'  page per event.
+#' @param color line colors for the covariate profiles. Recycled to the number
+#'  of profiles. Defaults to \code{seq_len(ncurve) + 1}.
+#' @param lty line types for the model cases. Recycled to the number of
+#'  selected cases. Defaults to \code{seq_len(n_case)}.
+#' @param ylim limits for the y-axis of the cumulative incidence panel. If
+#'  \code{NULL}, limits are computed per event from the drawn curves.
 #' @param xmin minimum value of the x-axis.
-#' @param xmax maximum value of the x-axis.
+#' @param xmax maximum value of the x-axis. If \code{NULL}, the largest
+#'  prediction time is used.
 #' @param xlab label for the x-axis.
-#' @param ylab label for the y-axis.
-#' @param legend logical value indicating whether a legend is drawn. 
-#'  If \code{TRUE} (default), a legend identifying each curve is displayed.
-#' @param legend.pos position of the legend, passed to \code{\link[graphics]{legend}}. 
-#'  The default is \code{"topleft"}.
+#' @param ylab label for the y-axis of the cumulative incidence panel.
+#' @param legend logical value indicating whether a legend is drawn.
+#' @param legend.pos position of the legend, passed to
+#'  \code{\link[graphics]{legend}}. The default is \code{"topleft"}.
 #' @param legend.title optional title for the legend.
 #' @param lwd line width for the curves.
 #' @param main main title. If \code{NULL}, the event being plotted is used.
-#' @param hazard logical value. If \code{TRUE}, the subdistribution hazard is
-#'  drawn in a left-hand panel next to the cumulative incidence.
-#'  Default is \code{TRUE}.
-#' @param mark.xmh logical value. If \code{TRUE} (default) and profile-specific
-#'  hazard turning points (\code{xmh_obs}) exist, peak or minimum hazard
-#'  points and vertical reference lines are added to the plots for
-#'  \code{"gompertz3"}, while peak hazard points and vertical reference lines
-#'  are added for \code{"logistic"}.
-#' @param max.marks maximum number of curves for which profile-specific peak hazard
-#'  vertical reference lines are drawn. If there are more curves than this threshold,
-#'  vertical lines are omitted to avoid overlap, keeping only the peak points on each curve.
-#'  Default is 4.
-#' @param xmh.lty line type for the vertical reference lines at peak hazard times. Default is 3 (dotted).
+#'  A vector is recycled over the selected events.
+#' @param hazard logical value. If \code{TRUE} (default), the subdistribution
+#'  hazard is drawn in a left-hand panel next to the cumulative incidence.
+#' @param mark.xmh logical value. If \code{TRUE} (default), profile-specific
+#'  hazard turning points (\code{xmh_obs}) and the baseline turning point
+#'  (\code{xmh_base}) are marked when they exist.
+#' @param max.marks maximum number of drawn curves for which vertical reference
+#'  lines and numeric legend entries are kept. Above this threshold the
+#'  annotation is simplified. Default is 4.
+#' @param xmh.lty line type for the vertical reference lines at the hazard
+#'  turning points. Default is 3 (dotted).
 #' @param xmh.col color of the baseline \eqn{x_{mh}} reference line. Default is
-#'  \code{"black"}, so that the covariate-free baseline peak stands out from the
-#'  profile-specific lines, which follow the color of their own curve.
-#' @param ... additional graphical parameters passed to \code{\link[graphics]{plot}}.
+#'  \code{"black"}, so that the covariate-free baseline turning point stands out
+#'  from the profile-specific lines, which follow the color of their own curve.
+#' @param ask logical value. If \code{TRUE}, the user is prompted before each
+#'  new page. If \code{NULL} (default), prompting is enabled only when several
+#'  events are drawn on an interactive single-panel device, so that a device set
+#'  up by the user with \code{\link[graphics]{par}(mfrow)} is left untouched.
+#' @param ... additional graphical parameters passed to
+#'  \code{\link[graphics]{plot}}.
 #'
 #' @return
-#' Produces a plot of predicted cumulative incidence functions and returns the input object invisibly.
+#' Produces the plots and returns the input object invisibly.
 #'
 #' @seealso
-#' \code{\link{pcrr}}, 
+#' \code{\link{pcrr}},
 #' \code{\link{predict.pcrr}}
 #'
+#' @importFrom graphics abline legend lines par points
+#' @importFrom grDevices dev.interactive devAskNewPage
+#' @importFrom stats approx
+#'
 #' @export
-plot.predict.pcrr <- function(x, lty = seq_along(x$labels),
-                              color = seq_along(x$labels) + 1,
-                              ylim = NULL, xmin = 0,
-                              xmax = max(x$pred[, 1], na.rm = TRUE),
+plot.predict.pcrr <- function(x, case = NULL, event = NULL,
+                              color = NULL, lty = NULL,
+                              ylim = NULL, xmin = 0, xmax = NULL,
                               xlab = "Time", ylab = "Cumulative Incidence",
                               legend = TRUE, legend.pos = "topleft",
                               legend.title = NULL, lwd = 2, main = NULL,
                               hazard = TRUE, mark.xmh = TRUE, max.marks = 4,
-                              xmh.lty = 3, xmh.col = "black", ...){
-  ncurve <- length(x$labels)
+                              xmh.lty = 3, xmh.col = "black",
+                              ask = NULL, ...) {
   
-  lty   <- rep(lty,   length.out = ncurve)
-  color <- rep(color, length.out = ncurve)
+  # case selection
+  avail_case <- x$case
+  if (is.null(case)) {
+    case <- avail_case[1]
+    if (length(avail_case) > 1)
+      message("Several model cases are available; showing case ", case,
+              " only.\nUse `case = ` to select or overlay cases :\n",
+              paste(x$case_model[avail_case], collapse = "\n"))
+  } else {
+    if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+        any(case != floor(case)) || !all(case %in% avail_case))
+      stop("`case` must be one or more of: ",
+           paste(avail_case, collapse = ", "), call. = FALSE)
+    case <- as.integer(unique(case))
+  }
+  lpos   <- match(case, avail_case)   # position inside the stored lists
+  n_case <- length(case)
   
-  labs <- x$labels
-  if (is.null(labs) || length(labs) != ncurve){
-    labs <- colnames(x$pred)[-1]
-    if (is.null(labs)) labs <- paste("curve", seq_len(ncurve))
+
+  # event selection
+  avail_event <- x$event
+  if (is.null(event)) {
+    event <- avail_event
+  } else {
+    if (length(event) == 0 || !all(event %in% avail_event))
+      stop("`event` must be one or more of: ",
+           paste(avail_event, collapse = ", "), call. = FALSE)
+    event <- unique(event)
+  }
+  epos    <- match(event, avail_event)
+  n_event <- length(event)
+  
+
+  # curves, colors and line types
+  labs   <- x$labels
+  ncurve <- length(labs)
+  if (is.null(labs) || ncurve == 0) {
+    ncurve <- ncol(x$pred[[lpos[1]]][[epos[1]]]) - 1
+    labs   <- paste("obs", seq_len(ncurve))
   }
   
-  ev <- x$event
-  if (is.null(main) && !is.null(ev)) main <- paste("Event", ev)
+  if (is.null(color)) color <- seq_len(ncurve) + 1
+  color <- rep(color, length.out = ncurve)
+  if (is.null(lty))   lty <- seq_len(n_case)
+  lty   <- rep(lty, length.out = n_case)
+  
+  if (is.null(xmax)) {
+    xmax <- max(x$pred[[lpos[1]]][[epos[1]]][, 1], na.rm = TRUE)
+  }
+  
+  # simplify the annotation when crowded
+  total_curve <- n_case * ncurve
+  crowded     <- total_curve > max.marks
+  show_lines  <- isTRUE(mark.xmh) && !crowded
+  show_values <- isTRUE(mark.xmh) && !crowded && n_case == 1
   
   show_haz <- isTRUE(hazard) && !is.null(x$subdistribution_hazard)
   
 
-  marks <- NULL
-  if (isTRUE(mark.xmh) && !is.null(x$xmh_obs)) marks <- x$xmh_obs
-  show_lines <- !is.null(marks) && ncurve <= max.marks
+  # device set-up
+  user_split <- !identical(as.integer(par("mfrow")), c(1L, 1L))
   
-  base_x <- NULL
-  if (isTRUE(mark.xmh) && !is.null(x$xmh_base))
-    if (x$xmh_base >= xmin && x$xmh_base <= xmax) base_x <- x$xmh_base
-  
-  if (show_haz){
-    oldpar <- graphics::par(mfrow = c(1, 2))
-    on.exit(graphics::par(oldpar), add = TRUE)
-    
-    hz <- x$subdistribution_hazard[, -1, drop = FALSE]
-    plot(c(xmin, xmax), c(0, max(hz, na.rm = TRUE) * 1.05), type = "n",
-         xlab = xlab, ylab = "Subdistribution Hazard", main = main, ...)
-    if (!is.null(base_x)) abline(v = base_x, lty = xmh.lty, col = xmh.col, lwd = 1.6)
-    if (show_lines)
-      for (j in seq_len(ncurve))
-        if (is.finite(marks[j]) && marks[j] >= xmin && marks[j] <= xmax)
-          abline(v = marks[j], lty = xmh.lty, col = color[j])
-    for (j in seq_len(ncurve))
-      lines(x$subdistribution_hazard[, 1], hz[, j], lty = lty[j], col = color[j], lwd = lwd)
-    if (!is.null(marks))
-      for (j in seq_len(ncurve))
-        if (is.finite(marks[j]) && marks[j] >= xmin && marks[j] <= xmax)
-          points(marks[j], approx(x$subdistribution_hazard[, 1], hz[, j], xout = marks[j])$y,
-                 pch = 19, col = color[j], cex = 0.9)
-    if (isTRUE(legend)){
-      lg <- labs
-      if (!is.null(marks) && any(is.finite(marks)))
-        lg <- ifelse(is.finite(marks), sprintf("%s   x_mh = %.2f", labs, marks),labs)
-      lc <- color; ll <- lty; lw <- rep(lwd, ncurve)
-      if (!is.null(base_x)){
-        lg <- c(lg, sprintf("baseline x_mh = %.2f", base_x))
-        lc <- c(lc, xmh.col); ll <- c(ll, xmh.lty); lw <- c(lw, 1.6)
-      }
-      legend(legend.pos, legend = lg, lty = ll, col = lc, lwd = lw,
-             title = legend.title, bty = "n")
-    }
+  if (is.null(ask))
+    ask <- (n_event > 1) && !user_split && dev.interactive()
+  if (isTRUE(ask)) {
+    oask <- devAskNewPage(TRUE)
+    on.exit(devAskNewPage(oask), add = TRUE)
+  }
+  # only split the device when the user has not already done so
+  if (show_haz && !user_split) {
+    op <- par(mfrow = c(1, 2))
+    on.exit(par(op), add = TRUE)
   }
   
-  if (is.null(ylim)) ylim <- c(0, max(x$pred[, -1], na.rm = TRUE))
-  plot(c(xmin, xmax), ylim, type = "n", xlab = xlab, ylab = ylab, main = main, ...)
+  ## ------------------------------------------------------------------
+  ## small helpers
+  ## ------------------------------------------------------------------
+  ## largest finite value of the curve columns, NA-safe
+  col_max <- function(m) {
+    v <- m[, -1, drop = FALSE]
+    if (!any(is.finite(v))) return(NA_real_)
+    max(v[is.finite(v)])
+  }
+  ## height of a curve at xout, NA-safe
+  curve_y <- function(tt, yy, xout) {
+    ok <- is.finite(tt) & is.finite(yy)
+    if (sum(ok) < 2) return(NA_real_)
+    approx(tt[ok], yy[ok], xout = xout)$y
+  }
+  ## is this turning point drawable?
+  usable <- function(v) is.finite(v) && v >= xmin && v <= xmax
   
-  if (!is.null(base_x)) abline(v = base_x, lty = xmh.lty, col = xmh.col, lwd = 1.6)
-  if (show_lines)
-    for (j in seq_len(ncurve))
-      if (is.finite(marks[j]) && marks[j] >= xmin && marks[j] <= xmax)
-        abline(v = marks[j], lty = xmh.lty, col = color[j])
-  
-  for (j in seq_len(ncurve))
-    lines(x$pred[, 1], x$pred[, j + 1], lty = lty[j], col = color[j], lwd = lwd)
-  
-  if (!is.null(marks))
-    for (j in seq_len(ncurve))
-      if (is.finite(marks[j]) && marks[j] >= xmin && marks[j] <= xmax)
-        points(marks[j], approx(x$pred[, 1], x$pred[, j + 1], xout = marks[j])$y,
-               pch = 19, col = color[j], cex = 0.9)
-  
-  if (isTRUE(legend)){
-    leg <- labs
-    if (show_lines && any(is.finite(marks)))
-      leg <- ifelse(is.finite(marks), sprintf("%s   x_mh = %.2f", labs, marks), labs)
-    lc <- color; ll <- lty; lw <- rep(lwd, ncurve)
-    if (!is.null(base_x)){
-      leg <- c(leg, sprintf("baseline x_mh = %.2f", base_x))
-      lc <- c(lc, xmh.col); ll <- c(ll, xmh.lty); lw <- c(lw, 1.6)
+  ## legend contents; with one case the profiles carry the line type,
+  ## with several the legend is split into profiles and cases
+  make_legend <- function(mk, base_v) {
+    if (n_case == 1) {
+      lg <- labs
+      if (show_values && !is.null(mk) && any(is.finite(mk)))
+        lg <- ifelse(is.finite(mk), sprintf("%s   x_mh = %.2f", labs, mk), labs)
+      out <- list(legend = lg, col = color,
+                  lty = rep(lty[1], ncurve), lwd = rep(lwd, ncurve))
+    } else {
+      out <- list(legend = c(labs, paste("case", case)),
+                  col = c(color, rep(xmh.col, n_case)),
+                  lty = c(rep(1, ncurve), lty),
+                  lwd = c(rep(lwd, ncurve), rep(lwd, n_case)))
     }
-    legend(legend.pos, legend = leg, lty = ll, col = lc, lwd = lw,
-           title = legend.title, bty = "n")
+    bv <- base_v[is.finite(base_v)]
+    if (isTRUE(mark.xmh) && length(bv) > 0) {
+      lab_b <- if (!crowded && length(bv) == 1)
+        sprintf("baseline x_mh = %.2f", bv[1]) else "baseline x_mh"
+      out$legend <- c(out$legend, lab_b)
+      out$col    <- c(out$col, xmh.col)
+      out$lty    <- c(out$lty, xmh.lty)
+      out$lwd    <- c(out$lwd, 1.6)
+    }
+    out
+  }
+  
+  # draw one panel (cumulative incidence or subdistribution hazard)
+  draw_panel <- function(mats, mk_l, base_v, ylim_p, ylab_p, main_p) {
+    plot(c(xmin, xmax), ylim_p, type = "n",
+         xlab = xlab, ylab = ylab_p, main = main_p, ...)
+    
+    # baseline turning point(s)
+    if (isTRUE(mark.xmh))
+      for (v in unique(base_v[is.finite(base_v)]))
+        if (usable(v)) abline(v = v, lty = xmh.lty, col = xmh.col, lwd = 1.6)
+    
+    # profile-specific vertical reference lines
+    if (show_lines)
+      for (ci in seq_len(n_case)) {
+        mk <- mk_l[[ci]]
+        if (is.null(mk)) next
+        for (j in seq_len(ncurve))
+          if (usable(mk[j])) abline(v = mk[j], lty = xmh.lty, col = color[j])
+      }
+    
+    # the curves themselves
+    for (ci in seq_len(n_case)) {
+      m <- mats[[ci]]
+      for (j in seq_len(ncurve))
+        lines(m[, 1], m[, j + 1], lty = lty[ci], col = color[j], lwd = lwd)
+    }
+    
+    # turning points marked on the curves (kept even when crowded)
+    if (isTRUE(mark.xmh))
+      for (ci in seq_len(n_case)) {
+        mk <- mk_l[[ci]]
+        if (is.null(mk)) next
+        m <- mats[[ci]]
+        for (j in seq_len(ncurve)) {
+          if (!usable(mk[j])) next
+          yy <- curve_y(m[, 1], m[, j + 1], mk[j])
+          if (is.finite(yy))
+            points(mk[j], yy, pch = 19, col = color[j], cex = 0.9)
+        }
+      }
+    
+    if (isTRUE(legend)) {
+      lg <- make_legend(if (n_case == 1) mk_l[[1]] else NULL, base_v)
+      legend(legend.pos, legend = lg$legend, lty = lg$lty, col = lg$col,
+             lwd = lg$lwd, title = legend.title, bty = "n")
+    }
+  }
+
+  # one page per event
+  for (ei in seq_len(n_event)) {
+    e  <- epos[ei]
+    ev <- event[ei]
+    
+    main_p <- if (is.null(main)) paste("Event", ev)
+    else rep(main, length.out = n_event)[ei]
+    
+    # turning points of every selected case for this event
+    mk_l <- lapply(lpos, function(l)
+      if (isTRUE(mark.xmh)) x$xmh_obs[[l]][[e]] else NULL)
+    base_v <- vapply(lpos, function(l) {
+      v <- if (isTRUE(mark.xmh)) x$xmh_base[[l]][[e]] else NA_real_
+      if (is.null(v) || length(v) == 0) NA_real_ else as.numeric(v)[1]
+    }, numeric(1))
+    
+    # subdistribution hazard
+    if (show_haz) {
+      hz_l <- lapply(lpos, function(l) x$subdistribution_hazard[[l]][[e]])
+      hmax <- suppressWarnings(max(vapply(hz_l, col_max, numeric(1)),
+                                   na.rm = TRUE))
+      if (!is.finite(hmax) || hmax <= 0) hmax <- 1
+      draw_panel(hz_l, mk_l, base_v, c(0, hmax * 1.05),
+                 "Subdistribution Hazard", main_p)
+    }
+    
+    # cumulative incidence
+    cif_l <- lapply(lpos, function(l) x$pred[[l]][[e]])
+    if (is.null(ylim)) {
+      cmax <- suppressWarnings(max(vapply(cif_l, col_max, numeric(1)), na.rm = TRUE))
+      if (!is.finite(cmax) || cmax <= 0) cmax <- 1
+      ylim_p <- c(0, cmax)
+    } else {
+      ylim_p <- ylim
+    }
+    draw_panel(cif_l, mk_l, base_v, ylim_p, ylab, main_p)
   }
   
   invisible(x)
 }
+
 
 #' Estimate Cure Fractions
 #'
@@ -1772,6 +2402,9 @@ cure <- function(object, ...) UseMethod("cure")
 #' @rdname cure
 #'
 #' @param cov numeric matrix of covariate values.
+#' @param case integer vector selecting the transformation-model cases to use,
+#'  numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
+#'  every available case is used.
 #' @param event event type for which the cure fraction is computed.
 #'  The default is the failure type of interest.
 #'
@@ -1800,11 +2433,8 @@ cure <- function(object, ...) UseMethod("cure")
 #' \code{\link{print.cure.pcrr}}
 #'
 #' @export
-cure.pcrr <- function(object, cov, event = NULL, ...){
+cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
   P <- object$p
-  if (is.null(event)) event <- object$mapping[1]      # default : failcode
-  k <- match(event, object$mapping)
-  if (is.na(k)) stop("event must be one of: ", paste(object$mapping, collapse = ", "))
   
   if (!is.matrix(cov)) {
     if (is.vector(cov)){
@@ -1814,6 +2444,34 @@ cure.pcrr <- function(object, cov, event = NULL, ...){
   }
   if (!is.numeric(cov)) stop("cov must be numeric.")
   if (ncol(cov) != P) stop("cov must have ", P, " column(s).")
+  
+  
+  case_all <- object$case_all
+  n_case_all <- nrow(case_all)
+  if (is.null(case)) {
+    case <- seq_len(n_case_all)
+  } else if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+             any(case != floor(case)) || any(case < 1) || any(case > n_case_all)) {
+    stop("Please specify `case` correctly.\n\nThe possible model cases are as follows :\n",
+         paste(object$case_model, collapse = "\n"))
+  }
+  case   <- as.integer(case)
+  n_case <- length(case)
+  
+  
+  mapping <- object$mapping
+  if (is.null(event)) {
+    event <- mapping
+  } else {
+    if (all(event %in% mapping)) {
+      event <- unique(event)
+    } else {
+      stop("`event` must be one or more of: ", paste(mapping, collapse = ", "), call. = FALSE)
+    }
+  }
+
+  
+  model <- object$case_model
   
   
   if (object$distribution == "gompertz2" || object$distribution == "gompertz3"){
@@ -1834,64 +2492,103 @@ cure.pcrr <- function(object, cov, event = NULL, ...){
       inner <- - p + p*(1+exp(-b*c))/(1+exp(b*(t-c)))
       
       if (1 + inner > 0) u <- -log1p(inner)
-      else u <- NaN
+      else u <- NaN 
       u
     }
   }
   
-  if (object$distribution == "gompertz2"){
-    alpha <- object$coef[(k - 1) * (3 + P) + 1]
-    rho   <- object$coef[(k - 1) * (3 + P) + 2]
-    tau   <- object$coef[(k - 1) * (3 + P) + 3]
-    eta   <- 0
-    beta  <- object$coef[((k - 1) * (3 + P) + 4):(k * (3 + P))]
-    
-    u_Inf <- u_k(Inf, rho, tau, eta, 1e-12)
-  } else if (object$distribution == "gompertz3"){
-    alpha <- object$coef[(k - 1) * (4 + P) + 1]
-    rho   <- object$coef[(k - 1) * (4 + P) + 2]
-    tau   <- object$coef[(k - 1) * (4 + P) + 3]
-    eta   <- object$coef[(k - 1) * (4 + P) + 4]
-    beta  <- object$coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
-    
-    u_Inf <- u_k(Inf, rho, tau, eta, 1e-12)
-  } else if (object$distribution == "logistic"){
-    alpha <- object$coef[(k - 1) * (4 + P) + 1]
-    b   <- object$coef[(k - 1) * (4 + P) + 2]
-    c   <- object$coef[(k - 1) * (4 + P) + 3]
-    p   <- object$coef[(k - 1) * (4 + P) + 4]
-    beta  <- object$coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
-    
-    u_Inf <- u_k(Inf, b, c, p, 1e-12)
-  }
   
-  t_boundary <- suppressWarnings(predict.pcrr(object, cov, event = event)$t_boundary)
+  tol <- 1e-12
   
-  cure <- rep(NA_real_, nrow(cov))
-  status <- character(nrow(cov))
   
-  for (j in seq_len(nrow(cov))){
-    ezb <- exp(sum(cov[j, ] * beta))
-
-    if (is.finite(t_boundary[j])){
-      status[j] <- "no cure (finite support)"
-      cure[j] <- NA_real_
-    } else{
-      if (is.finite(u_Inf)){
-        if (abs(alpha) < 1e-12) cure[j] <- exp(-ezb * u_Inf)
-        else cure[j] <- (1.0 + alpha * ezb * u_Inf)^(-1.0 / alpha)
-        status[j] <- "cure"
-      } else {
-        cure[j] <- 0
-        status[j] <- "no cure (asymptotic)"
+  
+  t_boundary <- suppressWarnings(predict.pcrr(object, cov, case = case, event = event)$t_boundary)
+  
+  cure_list <- vector("list", n_case)
+  status_list <- vector("list", n_case)
+  
+  names(cure_list) <- model[case]
+  names(status_list) <- model[case]
+  
+  for (l in 1:n_case) {
+    i <- case[l]
+    coef <- object$mle_case_all[[i]]$par
+    
+    cure_list[[l]] <- vector("list", length(event))
+    status_list[[l]] <- vector("list", length(event))
+    
+    names(cure_list[[l]]) <- paste0("event ", event)
+    names(status_list[[l]]) <- paste0("event ", event)
+  
+  
+    for (e in 1:length(event)) {
+      k <- match(event[e], mapping)
+  
+      
+      if (object$distribution == "gompertz2"){
+        alpha <- coef[(k - 1) * (3 + P) + 1]
+        rho   <- coef[(k - 1) * (3 + P) + 2]
+        tau   <- coef[(k - 1) * (3 + P) + 3]
+        eta   <- 0
+        beta  <- coef[((k - 1) * (3 + P) + 4):(k * (3 + P))]
+        
+        u_Inf <- u_k(Inf, rho, tau, eta, tol)
+      } else if (object$distribution == "gompertz3"){
+        alpha <- coef[(k - 1) * (4 + P) + 1]
+        rho   <- coef[(k - 1) * (4 + P) + 2]
+        tau   <- coef[(k - 1) * (4 + P) + 3]
+        eta   <- coef[(k - 1) * (4 + P) + 4]
+        beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+        
+        u_Inf <- u_k(Inf, rho, tau, eta, tol)
+      } else if (object$distribution == "logistic"){
+        alpha <- coef[(k - 1) * (4 + P) + 1]
+        b   <- coef[(k - 1) * (4 + P) + 2]
+        c   <- coef[(k - 1) * (4 + P) + 3]
+        p   <- coef[(k - 1) * (4 + P) + 4]
+        beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+        
+        u_Inf <- u_k(Inf, b, c, p, tol)
       }
+
+      
+      
+      cure <- rep(NA_real_, nrow(cov))
+      status <- character(nrow(cov))
+      
+      for (j in seq_len(nrow(cov))){
+        ezb <- exp(sum(cov[j, ] * beta))
+        
+        if (is.finite(t_boundary[[l]][[e]][j])){
+          status[j] <- "no cure (finite support)"
+          cure[j] <- NA_real_
+        } else{
+          if (is.finite(u_Inf)){
+            if (abs(alpha) < 1e-8) cure[j] <- exp(-ezb * u_Inf)
+            else cure[j] <- (1.0 + alpha * ezb * u_Inf)^(-1.0 / alpha)
+            status[j] <- "cure"
+          } else {
+            cure[j] <- 0
+            status[j] <- "no cure (asymptotic)"
+          }
+        }
+      }
+      
+      
+      cure_list[[l]][[e]] <- unname(cure)
+      status_list[[l]][[e]] <- unname(status)
+      t_boundary[[l]][[e]] <- unname(t_boundary[[l]][[e]])
     }
   }
 
+
   result <- list(
-    cure = unname(cure),
-    status = unname(status),
-    t_boundary = unname(t_boundary)
+    cure = cure_list,
+    status = status_list,
+    t_boundary = t_boundary,
+    case_model = object$case_model,
+    case = case,
+    event = event
   )
   
   class(result) <- "cure.pcrr"
@@ -1923,19 +2620,43 @@ cure.pcrr <- function(object, cov, event = NULL, ...){
 #' @export
 print.cure.pcrr <- function(x, digits = 8, ...) {
   
-  for (j in seq_along(x$cure)) {
+  cat("Cure Fraction")
+  
+  for (l in 1:length(x$case)) {
+    i <- x$case[l]
+    cat("\n\n========================================\n")
+    cat(x$case_model[i])
+    cat("\n========================================\n")
     
-    width <- digits + 4
-    cure_txt <- if (is.na(x$cure[j])) {
-      sprintf(paste0("%-", width, "s"), "NA")
-    } else {
-      sprintf(paste0("%-", width, ".", digits, "f"), x$cure[j])
+    for (e in 1:length(x$event)) {
+      cat("\n[event : ", x$event[e], "]\n\n", sep = "")
+      
+      cure_le <- x$cure[[l]][[e]]
+      status_le <- x$status[[l]][[e]]
+      t_boundary_le <- x$t_boundary[[l]][[e]]
+
+      width <- digits + 4
+      for (j in seq_along(cure_le)) {
+        
+        cure_txt <- if (is.na(cure_le[j])) {
+          sprintf(paste0("%-", width, "s"), "NA")
+        } else {
+          sprintf(paste0("%-", width, ".", digits, "f"), cure_le[j])
+        }
+        
+        if (is.finite(t_boundary_le[j])) {
+          interval_txt <- sprintf("[0, %s]", format(round(t_boundary_le[j], digits)))
+        } else {
+          interval_txt <- "[0, Inf)"
+        }
+        
+        cat("  obs ", j, " : ", cure_txt, "<", status_le[j], ">  ", interval_txt, "\n", sep = "")
+      }
+      
+      if (e != length(x$event)){
+        cat("\n----------------------------------------\n")
+      }
     }
-    
-    if (is.finite(x$t_boundary[j])) interval_txt <- sprintf("[0, %s]", x$t_boundary[j])
-    else interval_txt <- sprintf("[0, %s)", x$t_boundary[j])
-    
-    cat("obs", j, ":", cure_txt,"<", x$status[j], ">  ",interval_txt, "\n")
   }
   
   invisible(x)
@@ -2148,6 +2869,7 @@ NULL
   if (!is.null(fixed_alpha)) {
     for (k in 1:K){
       if (fixed_alpha[k] == 0 || fixed_alpha[k] == 1) {
+        theta_init[(k - 1) * (3 + P) + 1] <- fixed_alpha[k]
         lower[(k - 1) * (3 + P) + 1] <- fixed_alpha[k]
         upper[(k - 1) * (3 + P) + 1] <- fixed_alpha[k]
       }
@@ -2160,9 +2882,8 @@ NULL
   
   mle
 }
-.score_hessian_gom2 <- function(x, delta, z, theta_mle, variance){
-  
-  N <- length(x)
+.score_hessian_gom2 <- function(x, delta, z, theta_mle, variance, fixed_alpha){
+
   K <- ncol(delta)
   P <- ncol(z)
   
@@ -2198,16 +2919,26 @@ NULL
   txt_sum_F <- ""
   for (k in 1:K){
     
-    if (abs(theta_mle[(k - 1) * (3 + P) + 1]) < tol) {
-      txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
-      txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
-      txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
-      txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
+    if (is.null(fixed_alpha)){
+      if (abs(theta_mle[(k - 1) * (3 + P) + 1]) < tol) {
+        txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
+        txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
+      } else {
+        txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp", txt_zb[k], " * ", txt_u[k], ")^(-1 / alpha", k, ")")
+      }
+      
     } else {
-      txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")")
-      txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")^(-1 / alpha", k, ")")
+      if (fixed_alpha[k]) { # alpha = 1
+        txt_log_term[k] <- paste0("- 2 * ", "log1p(exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_F[k] <- paste0("1 - (1 + exp", txt_zb[k], " * ", txt_u[k], ")^(-1)")
+      } else { # alpha = 0
+        txt_log_term[k] <- paste0("- exp", txt_zb[k], " * ", txt_u[k])
+        txt_F[k] <- paste0("1 - exp(-exp", txt_zb[k], " * ", txt_u[k], ")")
+      }
     }
-    
     
     txt_sum_F <- paste0(txt_sum_F, "(", txt_F[k], ")")
     if (k != K) txt_sum_F <- paste0(txt_sum_F, " + ")
@@ -2246,6 +2977,18 @@ NULL
     }
   }
   
+  if (!is.null(fixed_alpha)) {
+    idx_alpha <- (seq_len(K) - 1) * (3 + P) + 1
+    is_alpha <- logical(n_param)
+    is_alpha[idx_alpha] <- TRUE
+    
+    param_names <- param_names[!is_alpha]
+    
+    theta_mle <- theta_mle[!is_alpha]
+    
+    n_param <- K * (2 + P)
+  }
+  
   
   names(theta_mle) <- param_names
   # Dynamic Variable Allocation (Caution!)
@@ -2260,7 +3003,6 @@ NULL
   }
   
   
-  
   # Score Expression Vector
   score_exprs <- setNames(vector("list", length(param_names)), param_names)
   for (p in param_names) {
@@ -2272,6 +3014,8 @@ NULL
   for (p in 1:n_param){
     score[p] <- sum( eval( score_exprs[[p]] ) )
   }
+  
+  
   
   if (!variance) return(list(score = score, hessian = NULL))
   
@@ -2296,6 +3040,7 @@ NULL
   list(score = score, hessian = hessian)
 }
 
+
 .init_values_gom3 <- function(x, delta, z){
   K <- ncol(delta)
   P <- ncol(z)
@@ -2309,7 +3054,7 @@ NULL
   # gompertz3 coincides with gompertz2. This avoids the optimizer getting stuck.
   g2 <- tryCatch({
     t2 <- .init_values_gom2(x, delta, z)
-    m2 <- .estimate_mle_gom2(x, delta, z, t2, 1e-6, 200)
+    m2 <- .estimate_mle_gom2(x, delta, z, t2, 1e-6, 200, NULL)
     if (m2$convergence == 0) m2$par else NULL
   }, error = function(e) NULL)
   
@@ -2484,6 +3229,7 @@ NULL
   if (!is.null(fixed_alpha)) {
     for (k in 1:K){
       if (fixed_alpha[k] == 0 || fixed_alpha[k] == 1) {
+        theta_init[(k - 1) * (4 + P) + 1] <- fixed_alpha[k]
         lower[(k - 1) * (4 + P) + 1] <- fixed_alpha[k]
         upper[(k - 1) * (4 + P) + 1] <- fixed_alpha[k]
       }
@@ -2551,9 +3297,8 @@ NULL
   mle <- fits_fine[[which.min(sapply(fits_fine, `[[`, "objective"))]]
   mle
 }
-.score_hessian_gom3 <- function(x, delta, z, theta_mle, variance){
-  
-  N <- length(x)
+.score_hessian_gom3 <- function(x, delta, z, theta_mle, variance, fixed_alpha){
+
   K <- ncol(delta)
   P <- ncol(z)
   
@@ -2597,15 +3342,26 @@ NULL
   txt_sum_F <- ""
   for (k in 1:K){
     
-    if (abs(theta_mle[(k - 1) * (4 + P) + 1]) < tol) {
-      txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
-      txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
-      txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
-      txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
+    if (is.null(fixed_alpha)){
+      if (abs(theta_mle[(k - 1) * (4 + P) + 1]) < tol) {
+        txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
+        txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
+      } else {
+        txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")")
+        txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")^(-1 / alpha", k, ")")
+      }
     } else {
-      txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")")
-      txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")^(-1 / alpha", k, ")")
+      if (fixed_alpha[k]) { # alpha = 1
+        txt_log_term[k] <- paste0("- 2 * ", "log1p(exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_F[k] <- paste0("1 - (1 + exp", txt_zb[k], " * ", txt_u[k], ")^(-1)")
+      } else { # alpha = 0
+        txt_log_term[k] <- paste0("- exp", txt_zb[k], " * ", txt_u[k])
+        txt_F[k] <- paste0("1 - exp(-exp", txt_zb[k], " * ", txt_u[k], ")")
+      }
     }
+    
     
     txt_sum_F <- paste0(txt_sum_F, "(", txt_F[k], ")")
     if (k != K) txt_sum_F <- paste0(txt_sum_F, " + ")
@@ -2646,6 +3402,19 @@ NULL
     for (p in 1:P){
       param_names[(k - 1) * (4 + P) + p + 4] <- paste0("beta", k, p)
     }
+  }
+  
+  
+  if (!is.null(fixed_alpha)) {
+    idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
+    is_alpha <- logical(n_param)
+    is_alpha[idx_alpha] <- TRUE
+    
+    param_names <- param_names[!is_alpha]
+    
+    theta_mle <- theta_mle[!is_alpha]
+    
+    n_param <- K * (3 + P)
   }
   
   
@@ -2698,6 +3467,7 @@ NULL
   
   list(score = score, hessian = hessian)
 }
+
 
 .init_values_logi <- function(x, delta, z){
   K <- ncol(delta)
@@ -2845,6 +3615,7 @@ NULL
   if (!is.null(fixed_alpha)) {
     for (k in 1:K){
       if (fixed_alpha[k] == 0 || fixed_alpha[k] == 1) {
+        theta_init[(k - 1) * (4 + P) + 1] <- fixed_alpha[k]
         lower[(k - 1) * (4 + P) + 1] <- fixed_alpha[k]
         upper[(k - 1) * (4 + P) + 1] <- fixed_alpha[k]
       }
@@ -2857,9 +3628,8 @@ NULL
   
   mle
 }
-.score_hessian_logi <- function(x, delta, z, theta_mle, variance){
-  
-  N <- length(x)
+.score_hessian_logi <- function(x, delta, z, theta_mle, variance, fixed_alpha){
+
   K <- ncol(delta)
   P <- ncol(z)
   
@@ -2888,14 +3658,24 @@ NULL
   txt_sum_F <- ""
   for (k in 1:K){
     
-    if (abs(theta_mle[(k - 1) * (4 + P) + 1]) < tol) {
-      txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
-      txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
-      txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
-      txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
+    if (is.null(fixed_alpha)) {
+      if (abs(theta_mle[(k - 1) * (4 + P) + 1]) < tol) {
+        txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
+        txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
+      } else {
+        txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")")
+        txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")^(-1 / alpha", k, ")")
+      }
     } else {
-      txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")")
-      txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")^(-1 / alpha", k, ")")
+      if (fixed_alpha[k]) { # alpha = 1
+        txt_log_term[k] <- paste0("- 2 * ", "log1p(exp", txt_zb[k], " * ", txt_u[k], ")")
+        txt_F[k] <- paste0("1 - (1 + exp", txt_zb[k], " * ", txt_u[k], ")^(-1)")
+      } else { # alpha = 0
+        txt_log_term[k] <- paste0("- exp", txt_zb[k], " * ", txt_u[k])
+        txt_F[k] <- paste0("1 - exp(-exp", txt_zb[k], " * ", txt_u[k], ")")
+      }
     }
     
     txt_sum_F <- paste0(txt_sum_F, "(", txt_F[k], ")")
@@ -2941,6 +3721,19 @@ NULL
     for (p in 1:P){
       param_names[(k - 1) * (4 + P) + p + 4] <- paste0("beta", k, p)
     }
+  }
+  
+  
+  if (!is.null(fixed_alpha)) {
+    idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
+    is_alpha <- logical(n_param)
+    is_alpha[idx_alpha] <- TRUE
+    
+    param_names <- param_names[!is_alpha]
+    
+    theta_mle <- theta_mle[!is_alpha]
+    
+    n_param <- K * (3 + P)
   }
   
   

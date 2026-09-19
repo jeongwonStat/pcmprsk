@@ -4,7 +4,7 @@
 \alias{predict.pcrr}
 \title{Predict Cumulative Incidence Functions}
 \usage{
-\method{predict}{pcrr}(object, cov, times = NULL, event = NULL, ...)
+\method{predict}{pcrr}(object, cov, times = NULL, case = NULL, event = NULL, ...)
 }
 \arguments{
 \item{object}{object of class \code{"pcrr"}.}
@@ -16,6 +16,10 @@ in the fitted model.}
 \item{times}{optional vector of time points at which predictions are
 evaluated. If omitted, 200 equally spaced time points over the
 observed time range are used.}
+
+\item{case}{integer vector selecting the transformation-model cases to use,
+numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
+every available case is used.}
 
 \item{event}{integer code identifying the event type for prediction.
 If omitted, the first event type (the event of interest) in the fitted model is used.}
@@ -111,7 +115,7 @@ A U-shaped subdistribution hazard occurs when
 
 For the three-parameter Modified Logistic distribution, a maximum
 of the baseline hazard exists when
-\eqn{\log\left(\frac{1+p_ke^{-b_kc_k}}{1-p_k}\right)\leq-2b_kc_k.}
+\eqn{\log\left(\frac{1+p_ke^{-b_kc_k}}{1-p_k}\right)\geq-2b_kc_k.}
 In this case, the baseline maximum hazard time is
 \deqn{x_{mh}^{base} =
 \dfrac{1}{2b_k}\log\left(\dfrac{1+p_ke^{-b_kc_k}}{1-p_k}\right)+c_k.}

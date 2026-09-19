@@ -23,5 +23,6 @@ Prints a summary of predicted cumulative incidence functions produced by
 }
 \seealso{
 \code{\link{pcrr}},
+\code{\link{plot.pcrr}},
 \code{\link{predict.pcrr}}
 }

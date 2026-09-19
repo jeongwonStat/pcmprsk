@@ -4,12 +4,22 @@
 \alias{summary.pcrr}
 \title{Summarize a Fitted Parametric Competing Risks Regression Model}
 \usage{
-\method{summary}{pcrr}(object, conf_int = 0.95, digits = max(options()$digits - 4, 3), ...)
+\method{summary}{pcrr}(
+  object,
+  case = NULL,
+  conf.level = 0.95,
+  digits = max(options()$digits - 4, 3),
+  ...
+)
 }
 \arguments{
 \item{object}{object of class \code{"pcrr"}.}
 
-\item{conf_int}{confidence level for confidence intervals. The default is \code{0.95}.}
+\item{case}{integer vector selecting the transformation-model cases to use,
+numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
+every available case is used.}
+
+\item{conf.level}{confidence level for confidence intervals. The default is \code{0.95}.}
 
 \item{digits}{number of digits to print.}
 

@@ -6,11 +6,13 @@
 \usage{
 \method{plot}{predict.pcrr}(
   x,
-  lty = seq_along(x$labels),
-  color = seq_along(x$labels) + 1,
+  case = NULL,
+  event = NULL,
+  color = NULL,
+  lty = NULL,
   ylim = NULL,
   xmin = 0,
-  xmax = max(x$pred[, 1], na.rm = TRUE),
+  xmax = NULL,
   xlab = "Time",
   ylab = "Cumulative Incidence",
   legend = TRUE,
@@ -23,66 +25,106 @@
   max.marks = 4,
   xmh.lty = 3,
   xmh.col = "black",
+  ask = NULL,
   ...
 )
 }
 \arguments{
 \item{x}{object of class \code{"predict.pcrr"}.}
 
-\item{lty}{line types for curves.}
+\item{case}{integer vector of model cases to draw, using the case numbers
+stored in \code{x$case}. If \code{NULL} (default) the first available case
+is used and a message is issued when more than one is available. Several
+cases are overlaid and distinguished by line type.}
 
-\item{color}{line colors for curves.}
+\item{event}{vector of event types to draw, using the codes stored in
+\code{x$event}. If \code{NULL} (default) every stored event is drawn, one
+page per event.}
 
-\item{ylim}{limits for the y-axis.}
+\item{color}{line colors for the covariate profiles. Recycled to the number
+of profiles. Defaults to \code{seq_len(ncurve) + 1}.}
+
+\item{lty}{line types for the model cases. Recycled to the number of
+selected cases. Defaults to \code{seq_len(n_case)}.}
+
+\item{ylim}{limits for the y-axis of the cumulative incidence panel. If
+\code{NULL}, limits are computed per event from the drawn curves.}
 
 \item{xmin}{minimum value of the x-axis.}
 
-\item{xmax}{maximum value of the x-axis.}
+\item{xmax}{maximum value of the x-axis. If \code{NULL}, the largest
+prediction time is used.}
 
 \item{xlab}{label for the x-axis.}
 
-\item{ylab}{label for the y-axis.}
+\item{ylab}{label for the y-axis of the cumulative incidence panel.}
 
-\item{legend}{logical value indicating whether a legend is drawn.
-If \code{TRUE} (default), a legend identifying each curve is displayed.}
+\item{legend}{logical value indicating whether a legend is drawn.}
 
-\item{legend.pos}{position of the legend, passed to \code{\link[graphics]{legend}}.
-The default is \code{"topleft"}.}
+\item{legend.pos}{position of the legend, passed to
+\code{\link[graphics]{legend}}. The default is \code{"topleft"}.}
 
 \item{legend.title}{optional title for the legend.}
 
 \item{lwd}{line width for the curves.}
 
-\item{main}{main title. If \code{NULL}, the event being plotted is used.}
+\item{main}{main title. If \code{NULL}, the event being plotted is used.
+A vector is recycled over the selected events.}
 
-\item{hazard}{logical value. If \code{TRUE}, the subdistribution hazard is
-drawn in a left-hand panel next to the cumulative incidence.
-Default is \code{TRUE}.}
+\item{hazard}{logical value. If \code{TRUE} (default), the subdistribution
+hazard is drawn in a left-hand panel next to the cumulative incidence.}
 
-\item{mark.xmh}{logical value. If \code{TRUE} (default) and profile-specific
-hazard turning points (\code{xmh_obs}) exist, peak or minimum hazard
-points and vertical reference lines are added to the plots for
-\code{"gompertz3"}, while peak hazard points and vertical reference lines
-are added for \code{"logistic"}.}
+\item{mark.xmh}{logical value. If \code{TRUE} (default), profile-specific
+hazard turning points (\code{xmh_obs}) and the baseline turning point
+(\code{xmh_base}) are marked when they exist.}
 
-\item{max.marks}{maximum number of curves for which profile-specific peak hazard
-vertical reference lines are drawn. If there are more curves than this threshold,
-vertical lines are omitted to avoid overlap, keeping only the peak points on each curve.
-Default is 4.}
+\item{max.marks}{maximum number of drawn curves for which vertical reference
+lines and numeric legend entries are kept. Above this threshold the
+annotation is simplified. Default is 4.}
 
-\item{xmh.lty}{line type for the vertical reference lines at peak hazard times. Default is 3 (dotted).}
+\item{xmh.lty}{line type for the vertical reference lines at the hazard
+turning points. Default is 3 (dotted).}
 
 \item{xmh.col}{color of the baseline \eqn{x_{mh}} reference line. Default is
-\code{"black"}, so that the covariate-free baseline peak stands out from the
-profile-specific lines, which follow the color of their own curve.}
+\code{"black"}, so that the covariate-free baseline turning point stands out
+from the profile-specific lines, which follow the color of their own curve.}
 
-\item{...}{additional graphical parameters passed to \code{\link[graphics]{plot}}.}
+\item{ask}{logical value. If \code{TRUE}, the user is prompted before each
+new page. If \code{NULL} (default), prompting is enabled only when several
+events are drawn on an interactive single-panel device, so that a device set
+up by the user with \code{\link[graphics]{par}(mfrow)} is left untouched.}
+
+\item{...}{additional graphical parameters passed to
+\code{\link[graphics]{plot}}.}
 }
 \value{
-Produces a plot of predicted cumulative incidence functions and returns the input object invisibly.
+Produces the plots and returns the input object invisibly.
 }
 \description{
-Plots cumulative incidence functions produced by \code{\link{predict.pcrr}}.
+Plots cumulative incidence functions and subdistribution hazards produced by
+\code{\link{predict.pcrr}}.
+}
+\details{
+A \code{"predict.pcrr"} object may hold several transformation-model cases and
+several event types. They are displayed differently, because they mean
+different things.
+
+\emph{Events} are distinct causes of failure, so they are never overlaid.
+One page is drawn per event. When more than one event is plotted on a
+single-panel device, the pages are shown one at a time in the manner of
+\code{\link[stats]{plot.lm}}; see \code{ask}.
+
+\emph{Cases} are the same data fitted under different PH/PO assumptions, so
+overlaying them is informative. By default only the first available case is
+drawn, with a message; specifying \code{case} explicitly overlays the
+requested cases in one set of panels. Covariate profiles are distinguished by
+\emph{color} and cases by \emph{line type}, so that a shared color means a
+shared covariate profile and the line type shows the modelling assumption.
+
+When the number of drawn curves exceeds \code{max.marks} the annotation is
+simplified automatically: the vertical reference lines at the hazard turning
+points are dropped (the points on the curves are kept) and the numeric
+\eqn{x_{mh}} values are removed from the legend.
 }
 \seealso{
 \code{\link{pcrr}},

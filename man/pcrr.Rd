@@ -17,7 +17,7 @@ pcrr(
   maxiter = 300,
   init,
   variance = TRUE,
-  model
+  sig.level = 0.05
 )
 }
 \arguments{
@@ -59,15 +59,7 @@ See \code{\link{pcrr-parameter-order}} for the parameter ordering.}
 matrix is computed. The default is \code{TRUE}. If \code{FALSE}, only the
 maximum likelihood estimates and the score vector are computed.}
 
-\item{model}{a character or integer vector specifying the transformation
-model for each event. Its length must equal the number of competing
-events. The proportional hazards (PH) and proportional odds (PO) models
-are special cases of the GOR transformation model, corresponding to
-\eqn{\alpha_k = 0} and \eqn{\alpha_k = 1}, respectively. When PH or PO is
-specified, the corresponding alpha value is fixed at 0 or 1.
-The values \code{"PH"}, \code{0}, \code{"PO"}, \code{1}, and
-\code{"GOR"} can be used. Character values are case-insensitive, and
-any other value is treated as \code{"GOR"}.}
+\item{sig.level}{a significant level for model assumption test.}
 }
 \value{
 An object of class \code{"pcrr"}, which is a list containing the following components:
@@ -195,10 +187,6 @@ plot(pred1)
 cure(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)))
 
 
-# Transformation model assumption
-fit11 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2), model = c("GOR", "PO"))
-print(fit11)
-summary(fit11)
 
 
 ## Example 2: Fit the model with user-specified initial values
@@ -249,6 +237,7 @@ Using a Novel Three-Parameter Logistic Function.
 }
 \seealso{
 \code{\link{print.pcrr}},
+\code{\link{plot.pcrr}},
 \code{\link{summary.pcrr}},
 \code{\link{predict.pcrr}},
 \code{\link{plot.predict.pcrr}},
