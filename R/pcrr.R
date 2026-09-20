@@ -1619,6 +1619,9 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   
   if (is.null(times)) times <- seq(0, object$maxtime, length.out = 200)
   
+  if (!is.numeric(times) || any(!is.finite(times)) || any(times < 0))
+    stop("`times` must be finite and non-negative.")
+  
   if (!is.matrix(cov)) {
     if (is.vector(cov)){
       if (length(cov) %% P == 0) cov <- matrix(cov, ncol = P, byrow = TRUE)
