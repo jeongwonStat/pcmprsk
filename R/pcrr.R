@@ -220,7 +220,7 @@
 #'  
 #' @export
 pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failcode=1, cencode=0,
-                 na.action=na.omit, gtol=1e-6, maxiter=300, init, variance=TRUE, sig.level=0.05) {
+                 na.action=na.omit, gtol=1e-10, maxiter=300, init, variance=TRUE, sig.level=0.05) {
 
   if (!is.null(dist)) distribution <- dist
   distribution <- tolower(distribution)
@@ -243,11 +243,20 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
     variance <- TRUE
   }
   
+  if (!is.numeric(sig.level) || length(sig.level) != 1 || !is.finite(sig.level) ||
+      sig.level <= 0 || sig.level >= 1) {
+    warning("Invalid significance level. Using the default value (sig.level = 0.05).")
+    sig.level <- 0.05
+  }
+  
   call <- match.call()
   
   cov_name <- deparse(substitute(cov))
   cov_vars <- colnames(as.matrix(cov))
   
+  if (length(ftime) != length(fstatus) || length(ftime) != NROW(cov)) {
+    stop("The lengths of ftime, fstatus, and cov must be equal.")
+  }
   
   # Handling missing values
   user_data <- data.frame(ftime = ftime, fstatus = fstatus, cov)
@@ -266,7 +275,7 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
   
   if (N != n) {
     N_mis <- N - n
-    cat(format(N_mis),'cases omitted due to missing values\n')
+    message(format(N_mis), " cases omitted due to missing values")
   }
   
   ftime   <- as.numeric(user_data$ftime)
@@ -317,41 +326,6 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
   }
   colnames(z) <- cov_names
   
-
-
-  
-  # Kernel Operations
-  if (distribution == "gompertz2"){
-    .init_values <- .init_values_gom2
-    .log_lik <- .log_lik_gom2
-    .estimate_mle <- .estimate_mle_gom2
-    .score_hessian <- .score_hessian_gom2
-  } else if (distribution == "gompertz3"){
-    .init_values <- .init_values_gom3
-    .log_lik <- .log_lik_gom3
-    .estimate_mle <- .estimate_mle_gom3
-    .score_hessian <- .score_hessian_gom3
-  } else if (distribution == "logistic"){
-    .init_values <- .init_values_logi
-    .log_lik <- .log_lik_logi
-    .estimate_mle <- .estimate_mle_logi
-    .score_hessian <- .score_hessian_logi
-  } 
-  
-  if (init_ok) theta_init <- init
-  else theta_init <- .init_values(x, delta, z)
-  
-  val_mle <- suppressWarnings(tryCatch(.log_lik(x = x, delta = delta, z = z, theta = theta_init),
-                                       error = function(e) NaN))
-  if (!is.finite(val_mle) || abs(val_mle) >= 1e+100) {
-    warning("The log-likelihood evaluated at the initial values returned NaN. ",
-            "Optimization will proceed, but may converge to an incorrect or degenerate solution.")
-  }
-  
-  theta_mle <- .estimate_mle(x, delta, z, theta_init, gtol, maxiter, NULL)
-  score_hessian <- .score_hessian(x, delta, z, theta_mle$par, variance, NULL)
-  
-  
   
   # Display param name
   if (distribution == "gompertz2"){
@@ -390,106 +364,161 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
       }
     }
   }
+
+  
+  # Kernel Operations
+  if (distribution == "gompertz2"){
+    .init_values <- .init_values_gom2
+    .log_lik <- .log_lik_gom2
+    .estimate_mle <- .estimate_mle_gom2
+    .score_hessian <- .score_hessian_gom2
+  } else if (distribution == "gompertz3"){
+    .init_values <- .init_values_gom3
+    .log_lik <- .log_lik_gom3
+    .estimate_mle <- .estimate_mle_gom3
+    .score_hessian <- .score_hessian_gom3
+  } else if (distribution == "logistic"){
+    .init_values <- .init_values_logi
+    .log_lik <- .log_lik_logi
+    .estimate_mle <- .estimate_mle_logi
+    .score_hessian <- .score_hessian_logi
+  } 
+  
+  if (init_ok) theta_init <- init
+  else theta_init <- .init_values(x, delta, z)
+  
+  val_mle <- suppressWarnings(tryCatch(.log_lik(x = x, delta = delta, z = z, theta = theta_init),
+                                       error = function(e) NaN))
+  if (!is.finite(val_mle) || abs(val_mle) >= 1e+100) {
+    warning("The log-likelihood evaluated at the initial values returned NaN. ",
+            "Optimization will proceed, but may converge to an incorrect or degenerate solution.")
+  }
+  
+  theta_mle <- .estimate_mle(x, delta, z, theta_init, gtol, maxiter, NULL)
+  score_hessian <- .score_hessian(x, delta, z, theta_mle$par, TRUE, NULL)
+  
+  if(!is.finite(theta_mle$objective) || theta_mle$objective >= 1e+100) {
+    theta_mle$convergence <- 1L
+    theta_mle$message <- "did not move from the starting values (infeasible region)"
+    theta_mle$objective <- NaN
+  }
+  
+  if (theta_mle$convergence != 0) {
+    stop("The unconstrained (GOR) fit did not converge",
+         if (nzchar(theta_mle$message)) paste0(": ", theta_mle$message), 
+         ". Model assumption tests cannot proceed.")
+  }
   
   par <- theta_mle$par
   sco <- score_hessian$score
   hess <- score_hessian$hessian
   
-  names(par) <- display_names
-  if (!is.null(sco)) names(sco) <- display_names
-  if (variance && !is.null(hess)) dimnames(hess) <- list(display_names, display_names)
-  
-  inv_hess <- NULL 
-  if (!is.null(hess)){
-    inv_hess <- tryCatch(solve(-hess), error = function(e) {
-                           warning("Hessian matrix is singular or non-invertible.")
-                           return(NULL)})
+  if (is.null(sco)) {
+    stop("The Score vector at the unconstrained (GOR) fit could not be computed. The function cannot proceed.")
   }
+  if (is.null(hess)) {
+    stop("The Hessian matrix at the unconstrained (GOR) fit could not be computed. The function cannot proceed.")
+  }
+  
+  names(par) <- display_names  
+  names(sco) <- display_names  
+  dimnames(hess) <- list(display_names, display_names)
+  
+  inv_hess <- tryCatch(
+    solve(-hess), error = function(e) {
+      stop("The Hessian matrix for the unconstrained (GOR) fit is singular or non-invertible. The function cannot proceed.")
+    }
+  )
 
+  
   # Model assumption testing:
   # H0: alpha = 0 corresponds to PH; H0: alpha = 1 corresponds to PO.
-  fixed_model <- NULL
-  if (variance) {
-    fixed_model <- integer(K)
-    signif_level <- sig.level
-    
-    est <- par
-    se  <- sqrt(diag(inv_hess))
 
-    if (!is.null(se)) {
+  fixed_model <- integer(K)
+  signif_level <- sig.level
+  
+  est <- par
+  
+  d <- diag(inv_hess)
+  if (any(!is.finite(d)) || any(d <= 0)) {
+    warning("Some variance estimates are non-positive; ",
+            "the PH/PO tests may be unreliable.")
+  }
+  se <- sqrt(d)
+
+  
+  if (distribution == "gompertz2"){
+    idx_alpha <- (seq_len(K) - 1) * (3 + P) + 1
+  } else if (distribution == "gompertz3"){
+    idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
+  } else if (distribution == "logistic"){
+    idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
+  }
+  
+  is_alpha <- logical(length(par))
+  is_alpha[idx_alpha] <- TRUE
+  
+  
+  z_ph <- (est[is_alpha] - 0) / se[is_alpha]
+  z_po <- (est[is_alpha] - 1) / se[is_alpha]
+  p_ph <- 2 * (1 - pnorm(abs(z_ph)))
+  p_po <- 2 * (1 - pnorm(abs(z_po)))
+  
+  for (k in 1:K) {
+    if (!is.finite(p_ph[k]) && !is.finite(p_po[k])) {
+      message("Neither the PH nor the PO hypothesis could be tested for event ", mapping[k], ".")
+      fixed_model[k] <- -1
       
-      if (distribution == "gompertz2"){
-        idx_alpha <- (seq_len(K) - 1) * (3 + P) + 1
-      } else if (distribution == "gompertz3"){
-        idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
-      } else if (distribution == "logistic"){
-        idx_alpha <- (seq_len(K) - 1) * (4 + P) + 1
+    } else if (!is.finite(p_ph[k])) {
+      if (p_po[k] > signif_level) {
+        message("The PH hypothesis could not be tested, but the PO hypothesis ",
+                "was not rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+        fixed_model[k] <- 1
+      } else {
+        message("The PH hypothesis could not be tested, and the PO hypothesis ",
+                "was rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+        fixed_model[k] <- -1
       }
       
-      is_alpha <- logical(length(par))
-      is_alpha[idx_alpha] <- TRUE
-      
-      
-      z_ph <- (est[is_alpha] - 0) / se[is_alpha]
-      z_po <- (est[is_alpha] - 1) / se[is_alpha]
-      p_ph <- 2 * (1 - pnorm(abs(z_ph)))
-      p_po <- 2 * (1 - pnorm(abs(z_po)))
-      
-      for (k in 1:K) {
-        if (!is.finite(p_ph[k]) && !is.finite(p_po[k])) {
-          message("Neither the PH nor the PO hypothesis could be tested for event ", mapping[k], ".")
-          fixed_model[k] <- -1
-          
-        } else if (!is.finite(p_ph[k])) {
-          if (p_po[k] > signif_level) {
-            message("The PH hypothesis could not be tested, but the PO hypothesis ",
-                    "was not rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
-            fixed_model[k] <- 1
-          } else {
-            message("The PH hypothesis could not be tested, and the PO hypothesis ",
-                    "was rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
-            fixed_model[k] <- -1
-          }
-          
-        } else if (!is.finite(p_po[k])) {
-          if (p_ph[k] > signif_level) {
-            message("The PO hypothesis could not be tested, but the PH hypothesis ",
-                    "was not rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
-            fixed_model[k] <- 0
-          } else {
-            message("The PO hypothesis could not be tested, and the PH hypothesis ",
-                    "was rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
-            fixed_model[k] <- -1
-          }
-          
-        } else if (p_ph[k] <= signif_level && p_po[k] <= signif_level) {
-          message("At the ", signif_level, " significance level, both the PH and PO hypotheses are rejected ",
-                  "for event ", mapping[k], ".")
-          fixed_model[k] <- -1
-          
-        } else if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
-          message("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
-                  "hypothesis is not rejected for event ", mapping[k], ".")
-          fixed_model[k] <- 1
-          
-        } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
-          message("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
-                  "hypothesis is not rejected for event ", mapping[k], ".")
-          fixed_model[k] <- 0
-          
-        } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
-          message("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
-                  "rejected for event ", mapping[k], ".")
-          fixed_model[k] <- 2
-          
-        } else {
-          warning("An unexpected result occurred during the model assumption tests ",
-                  "for event ", mapping[k], ".")
-          fixed_model[k] <- -1
-        }
+    } else if (!is.finite(p_po[k])) {
+      if (p_ph[k] > signif_level) {
+        message("The PO hypothesis could not be tested, but the PH hypothesis ",
+                "was not rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+        fixed_model[k] <- 0
+      } else {
+        message("The PO hypothesis could not be tested, and the PH hypothesis ",
+                "was rejected at the ", signif_level, " significance level for event ", mapping[k], ".")
+        fixed_model[k] <- -1
       }
+      
+    } else if (p_ph[k] <= signif_level && p_po[k] <= signif_level) {
+      message("At the ", signif_level, " significance level, both the PH and PO hypotheses are rejected ",
+              "for event ", mapping[k], ".")
+      fixed_model[k] <- -1
+      
+    } else if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
+      message("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
+              "hypothesis is not rejected for event ", mapping[k], ".")
+      fixed_model[k] <- 1
+      
+    } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
+      message("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
+              "hypothesis is not rejected for event ", mapping[k], ".")
+      fixed_model[k] <- 0
+      
+    } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
+      message("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
+              "rejected for event ", mapping[k], ".")
+      fixed_model[k] <- 2
+      
+    } else {
+      warning("An unexpected result occurred during the model assumption tests ",
+              "for event ", mapping[k], ".")
+      fixed_model[k] <- -1
     }
   }
+
+  
   
   if (any(fixed_model == -1)) {
     stop("Neither the PH nor the PO transformation model is appropriate for the data for event(s) ",
@@ -517,33 +546,50 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
   # fitting MLE for all case
   mle_case_all <- vector("list", nrow(case_all))
   for (i in 1:nrow(case_all)) {
-    mle_case_all[[i]] <- .estimate_mle(x, delta, z, theta_init, gtol, maxiter, case_all[i, ])
+    mle <- .estimate_mle(x, delta, z, theta_init, gtol, maxiter, case_all[i, ])
+    if (!is.finite(mle$objective) || mle$objective >= 1e+100) {
+      mle$convergence <- 1L
+      mle$message <- "did not move from the starting values (infeasible region)"
+      mle$objective <- NaN
+    }
+    mle_case_all[[i]] <- mle
     names(mle_case_all[[i]]$par) <- display_names
   }
   names(mle_case_all) <- case_model
   
-  # calculate hessian for all case
-  hess_case_all <- NULL
-  if (variance) {
-    display_names2 <- display_names[!is_alpha]
-    hess_case_all <- vector("list", nrow(case_all))
-    for (i in 1:nrow(case_all)) {
-      hess_case_all[[i]] <- .score_hessian(x, delta, z, mle_case_all[[i]]$par, variance, case_all[i, ])$hessian
-      dimnames(hess_case_all[[i]]) <- list(display_names2, display_names2)
-    }
-    names(hess_case_all) <- case_model
-  }
+  # calculate score, hessian for all case
+  display_names2 <- display_names[!is_alpha]
   
+  sco_case_all <- vector("list", nrow(case_all))    
+  if (variance) {    
+    hess_case_all <- vector("list", nrow(case_all))  
+  } else {    
+    hess_case_all <- NULL  
+  }
+ 
+  for (i in 1:nrow(case_all)) {
+    sco_hess <- .score_hessian(x, delta, z, mle_case_all[[i]]$par, variance, case_all[i, ])
+    sco_case_all[[i]] <- sco_hess$score
+    names(sco_case_all[[i]]) <- display_names2
+    if (variance) {    
+      hess_case_all[[i]] <- sco_hess$hessian    
+      dimnames(hess_case_all[[i]]) <- list(display_names2, display_names2)    
+    }
+  }
+  names(sco_case_all) <- case_model
+  if (variance) {    
+    names(hess_case_all) <- case_model  
+  }
   
 
   
   # Define Class 'pcrr'
   cls <- list(coef      = par,
-              loglik    = if(!is.finite(theta_mle$objective) || theta_mle$objective == 1e+100) NaN else -theta_mle$objective,
+              loglik    = -theta_mle$objective,
               init      = theta_init,
-              score     = score_hessian$score,
-              inf       = if (variance && !is.null(hess)) -hess else NULL,
-              invinf    = if (variance) inv_hess else NULL,
+              score     = sco,
+              inf       = -hess,
+              invinf    = inv_hess,
               converged = theta_mle$convergence == 0,
               iter      = theta_mle$iterations,
               message   = theta_mle$message,
@@ -563,6 +609,7 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
               case_all = case_all,
               case_model = case_model,
               mle_case_all = mle_case_all,
+              sco_case_all = sco_case_all,
               hess_case_all = hess_case_all
   )
   class(cls) <- "pcrr"
@@ -628,75 +675,71 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
   
   
   est <- x$coef
-  if (is.null(x$invinf)) {
-    se <- NULL
-  } else {
-    se <- sqrt(diag(x$invinf))
-  }
+  se <- sqrt(diag(x$invinf))
+  
 
   
   # Model assumption tests
-  if (!is.null(se)) {
 
-    cat("\n")
-    cat("========================================\n")
-    cat("Model assumption tests\n")
-    cat("========================================\n\n")
+  cat("\n")
+  cat("========================================\n")
+  cat("Model assumption tests\n")
+  cat("========================================\n\n")
 
-    
-    alpha_est <- est[idx_alpha]
-    alpha_se  <- se[idx_alpha]
-    
-    z_ph <- (alpha_est - 0) / alpha_se
-    p_ph <- 2 * (1 - pnorm(abs(z_ph)))
-    
-    z_po <- (alpha_est - 1) / alpha_se
-    p_po <- 2 * (1 - pnorm(abs(z_po)))
-    
-    link_ph <- data.frame(est = alpha_est, se = alpha_se, `z value` = z_ph, `Pr(>|z|)` = p_ph, check.names = FALSE)
-    
-    link_po <- data.frame(est = alpha_est, se = alpha_se, `z value` = z_po, `Pr(>|z|)` = p_po, check.names = FALSE)
-    
-    
-    cat("[Proportional Hazards]\n")
-    cat("H0 : alpha = 0\n\n")
-    
-    printCoefmat(link_ph, digits = digits, signif.stars = FALSE, has.Pvalue = TRUE,
-                 P.values = TRUE, cs.ind = 1, tst.ind = 2)
-    
-    cat("\n----------------------------------------\n\n")
+  
+  alpha_est <- est[idx_alpha]
+  alpha_se  <- se[idx_alpha]
+  
+  z_ph <- (alpha_est - 0) / alpha_se
+  p_ph <- 2 * (1 - pnorm(abs(z_ph)))
+  
+  z_po <- (alpha_est - 1) / alpha_se
+  p_po <- 2 * (1 - pnorm(abs(z_po)))
+  
+  link_ph <- data.frame(est = alpha_est, se = alpha_se, `z value` = z_ph, `Pr(>|z|)` = p_ph, check.names = FALSE)
+  
+  link_po <- data.frame(est = alpha_est, se = alpha_se, `z value` = z_po, `Pr(>|z|)` = p_po, check.names = FALSE)
+  
+  
+  cat("[Proportional Hazards]\n")
+  cat("H0 : alpha = 0\n\n")
+  
+  printCoefmat(link_ph, digits = digits, signif.stars = FALSE, has.Pvalue = TRUE,
+               P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
+  
+  cat("\n----------------------------------------\n\n")
 
-    
+  
 
-    cat("[Proportional Odds]\n")
-    cat("H0 : alpha = 1\n\n")
-    
-    printCoefmat(link_po, digits = digits, signif.stars = FALSE, has.Pvalue = TRUE,
-                 P.values = TRUE, cs.ind = 1, tst.ind = 2)
-    
-    cat("\n========================================\n")
-    
-    # signif_level <- x$signif
-    # mapping <- x$mapping
-    # for (k in 1:K) {
-    #   if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
-    #     cat("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
-    #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
-    #   } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
-    #     cat("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
-    #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
-    #   } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
-    #     cat("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
-    #             "rejected for event ", mapping[k], ".\n", sep = "")
-    #   }
-    # }
-    
-    cat("\nThe possible model cases are as follows :\n")
-    for (i in seq_along(x$case_model)) {
-      cat(x$case_model[i], "\n")
-    }
-    
+  cat("[Proportional Odds]\n")
+  cat("H0 : alpha = 1\n\n")
+  
+  printCoefmat(link_po, digits = digits, signif.stars = FALSE, has.Pvalue = TRUE,
+               P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
+  
+  cat("\n========================================\n")
+  
+  # signif_level <- x$signif
+  # mapping <- x$mapping
+  # for (k in 1:K) {
+  #   if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
+  #     cat("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
+  #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
+  #   } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
+  #     cat("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
+  #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
+  #   } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
+  #     cat("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
+  #             "rejected for event ", mapping[k], ".\n", sep = "")
+  #   }
+  # }
+  
+  cat("\nThe possible model cases are as follows :\n")
+  for (i in seq_along(x$case_model)) {
+    cat(x$case_model[i], "\n")
   }
+    
+  
   
   invisible(x)
 }
@@ -1108,9 +1151,21 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #' @export
 summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(options()$digits - 4, 3), ...){
   
+  # if (is.null(object$hess_case_all)) {
+  #   message("Please set `variance = TRUE` to perform this operation.")
+  #   return(invisible())
+  # }
+  
+  if (!is.numeric(conf.level) || length(conf.level) != 1 || !is.finite(conf.level) ||
+      conf.level <= 0 || conf.level >= 1) {
+    warning("Invalid confidence level. Using the default value (conf.level = 0.95).")
+    conf.level <- 0.95
+  }
+  
   if (is.null(object$hess_case_all)) {
-    message("Please set `variance = TRUE` to perform this operation.")
-    return(invisible(object))
+    variance <- FALSE
+  } else {
+    variance <- TRUE
   }
   
   mapping <- object$mapping
@@ -1118,15 +1173,20 @@ summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(op
   case_all <- object$case_all
   n_case_all <- nrow(case_all)
 
+  avail_case <- seq_len(n_case_all)
   
   if (is.null(case)) {
-    case <- seq_len(n_case_all)
-  } else if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
-             any(case != floor(case)) || any(case < 1) || any(case > n_case_all)) {
-    stop("Please specify `case` correctly.\n\nThe possible model cases are as follows :\n",
-         paste(object$case_model, collapse = "\n"))
+    case <- avail_case
+  } else {
+    if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+        any(case != floor(case)) || !all(case %in% avail_case))
+      stop("`case` must be one or more of: ",
+           paste(avail_case, collapse = ", "),
+           "\n\nThe possible model cases are as follows :\n",
+           paste(object$case_model, collapse = "\n"), call. = FALSE)
+    case <- as.integer(unique(case))
   }
-  case   <- as.integer(case)
+  
   n_case <- length(case)
   
   
@@ -1162,37 +1222,46 @@ summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(op
   is_beta[idx_nonbeta] <- FALSE
   is_beta <- is_beta[!is_alpha]
   
-  
-
-  inf <- vector("list", n_case)
-  invinf <- vector("list", n_case)
 
   
-  for (j in 1:n_case) {
-    i <- case[j]
-    inf[[j]] <- -object$hess_case_all[[i]]
-    invinf[[j]] <- tryCatch(solve(inf[[j]]), error = function(e) {
-                              warning("Hessian matrix is singular or non-invertible. (", model[i], ")")
-                              matrix(NA_real_, nrow(inf[[j]]), ncol(inf[[j]]),
-                                     dimnames = dimnames(inf[[j]]))
-                            })
+  
+  
+  
+  if (variance) {
+    inf <- vector("list", n_case)
+    invinf <- vector("list", n_case)
+    
+    for (j in 1:n_case) {
+      i <- case[j]
+      inf[[j]] <- -object$hess_case_all[[i]]
+      invinf[[j]] <- tryCatch(solve(inf[[j]]), error = function(e) {
+        warning("Hessian matrix is singular or non-invertible. (", model[i], ")")
+        matrix(NA_real_, nrow(inf[[j]]), ncol(inf[[j]]),
+               dimnames = dimnames(inf[[j]]))
+      })
+    }
+  } else {
+    inf <- NULL
+    invinf <- NULL
   }
+
+  
   
   
   mle_case_all <- object$mle_case_all
   
   converged <- vector("list", n_case)
-  message <- vector("list", n_case)
+  msg <- vector("list", n_case)
   loglik <- vector("list", n_case)
   iter <- vector("list", n_case)
   names(converged) <- model[case]
-  names(message) <- model[case]
+  names(msg) <- model[case]
   names(loglik) <- model[case]
   names(iter) <- model[case]
   for (j in 1:n_case) {
     i <- case[j]
     converged[[j]] <- ifelse(mle_case_all[[i]]$convergence, FALSE, TRUE) 
-    message[[j]] <- mle_case_all[[i]]$message
+    msg[[j]] <- mle_case_all[[i]]$message
     loglik[[j]] <- if(!is.finite(mle_case_all[[i]]$objective) || mle_case_all[[i]]$objective == 1e+100) NaN else -mle_case_all[[i]]$objective
     iter[[j]] <- mle_case_all[[i]]$iterations
   }
@@ -1206,55 +1275,81 @@ summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(op
   names(ci_tab) <- model[case]
   names(base_tab) <- model[case]
   
-  if (object$distribution == "gompertz3") {
+  if (object$distribution == "gompertz3" && variance) {
     idx_eta <- (seq_len(K) - 1) * (3 + P) + 3
     shape_tab <- vector("list", n_case)
     names(shape_tab) <- model[case]
   } else shape_tab <- NULL
   
-  for (j in 1:n_case) {
-    i <- case[j]
-    est <- mle_case_all[[i]]$par[!is_alpha]
-    
-    d <- diag(invinf[[j]])
-    names(d) <- rownames(invinf[[j]])
-    
-    se <- withCallingHandlers(
-      sqrt(d), warning = function(w) {
-        warning(paste0(model[i], "\n","  sqrt(diag()): ", conditionMessage(w), "\n",
-            "  diag():\n  ",paste(names(d), "=", format(d, digits = 6),collapse = "\n  ")),call. = FALSE)
-        invokeRestart("muffleWarning")
-      })
-    
-    zst <- est / se
-    pv  <- 2 * (1 - pnorm(abs(zst)))
-    
-    
-    # Regression coefficient table
-    coef_tab[[j]] <- cbind(est[is_beta], exp(est[is_beta]), se[is_beta], zst[is_beta], pv[is_beta])
-    dimnames(coef_tab[[j]]) <- list(names(est)[is_beta], c("coef", "exp(coef)", "se(coef)", "z value", "Pr(>|z|)"))
-    
-    # Confidence interval
-    a  <- (1 - conf.level) / 2
-    a  <- c(a, 1 - a)
-    zq <- qnorm(a)
-    ci_tab[[j]] <- cbind(exp(est[is_beta]), exp(-est[is_beta]),
-                    exp(est[is_beta] + zq[1] * se[is_beta]),
-                    exp(est[is_beta] + zq[2] * se[is_beta]))
-    dimnames(ci_tab[[j]]) <- list(names(est)[is_beta], c("exp(coef)", "exp(-coef)",
-                               paste0(format(100 * a, trim = TRUE, digits = 4), "%")))
-    
-    # Basis parameters
-    base_tab[[j]] <- cbind(est[!is_beta], se[!is_beta], zst[!is_beta], pv[!is_beta])
-    dimnames(base_tab[[j]]) <- list(names(est)[!is_beta], c("est", "se", "z value", "Pr(>|z|)"))
-    
-    
-    # Baseline shape test : H0 : eta = 0, under which gompertz3 reduces to gompertz2
-    if (object$distribution == "gompertz3"){
-      z_eta <- est[idx_eta] / se[idx_eta]
-      shape_tab[[j]] <- cbind(est = est[idx_eta], se = se[idx_eta], `z value` = z_eta, `Pr(>|z|)` = 2 * (1 - pnorm(abs(z_eta))))
+  
+  if (variance) {
+    for (j in 1:n_case) {
+      i <- case[j]
+      est <- mle_case_all[[i]]$par[!is_alpha]
+      
+      d <- diag(invinf[[j]])
+      names(d) <- rownames(invinf[[j]])
+      
+      se <- withCallingHandlers(
+        sqrt(d), warning = function(w) {
+          warning(paste0(model[i], "\n","  sqrt(diag()): ", conditionMessage(w), "\n",
+                         "  diag():\n  ", paste(names(d), "=", format(d, digits = 6),collapse = "\n  ")),call. = FALSE)
+          invokeRestart("muffleWarning")
+        })
+      
+      zst <- est / se
+      pv  <- 2 * (1 - pnorm(abs(zst)))
+      
+      
+      # Regression coefficient table
+      coef_tab[[j]] <- cbind(est[is_beta], exp(est[is_beta]), se[is_beta], zst[is_beta], pv[is_beta])
+      dimnames(coef_tab[[j]]) <- list(names(est)[is_beta], c("coef", "exp(coef)", "se(coef)", "z value", "Pr(>|z|)"))
+      
+      # Confidence interval
+      a  <- (1 - conf.level) / 2
+      a  <- c(a, 1 - a)
+      zq <- qnorm(a)
+      ci_tab[[j]] <- cbind(exp(est[is_beta]), exp(-est[is_beta]),
+                           exp(est[is_beta] + zq[1] * se[is_beta]),
+                           exp(est[is_beta] + zq[2] * se[is_beta]))
+      dimnames(ci_tab[[j]]) <- list(names(est)[is_beta], c("exp(coef)", "exp(-coef)",
+                                                           paste0(format(100 * a, trim = TRUE, digits = 4), "%")))
+      
+      # Basis parameters
+      base_tab[[j]] <- cbind(est[!is_beta], se[!is_beta], zst[!is_beta], pv[!is_beta])
+      dimnames(base_tab[[j]]) <- list(names(est)[!is_beta], c("est", "se", "z value", "Pr(>|z|)"))
+      
+      
+      # Baseline shape test : H0 : eta = 0, under which gompertz3 reduces to gompertz2
+      if (object$distribution == "gompertz3"){
+        z_eta <- est[idx_eta] / se[idx_eta]
+        shape_tab[[j]] <- cbind(est = est[idx_eta], se = se[idx_eta], `z value` = z_eta, `Pr(>|z|)` = 2 * (1 - pnorm(abs(z_eta))))
+      }
     }
+    
+  } else {
+    for (j in 1:n_case) {
+      i <- case[j]
+      est <- mle_case_all[[i]]$par[!is_alpha]
+      
+      
+      # Regression coefficient table
+      coef_tab[[j]] <- cbind(est[is_beta])
+      dimnames(coef_tab[[j]]) <- list(names(est)[is_beta], c("coef"))
+      
+      # Confidence interval
+      ci_tab[[j]] <- cbind(exp(est[is_beta]), exp(-est[is_beta]))
+      dimnames(ci_tab[[j]]) <- list(names(est)[is_beta], c("exp(coef)", "exp(-coef)"))
+      
+      # Basis parameters
+      base_tab[[j]] <- cbind(est[!is_beta])
+      dimnames(base_tab[[j]]) <- list(names(est)[!is_beta], c("est"))
+      
+    }
+    
+    
   }
+  
 
   
   out <- list(call = object$call,
@@ -1266,14 +1361,14 @@ summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(op
               case = case,
               case_model = object$case_model,
               converged = converged,
-              message = message,
+              message = msg,
               loglik = loglik,
               iter = iter,
               inf = inf,
               invinf = invinf,
               coef = coef_tab,
               conf_int = ci_tab,
-              baseline = base_tab,
+              base_param = base_tab,
               shape = shape_tab
   )
   class(out) <- "summary.pcrr"
@@ -1302,6 +1397,12 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
   savedig <- options(digits = digits)
   on.exit(options(savedig))
   
+  if (is.null(x$invinf)) {
+    variance <- FALSE
+  } else {
+    variance <- TRUE
+  }
+  
   cat("Parametric Competing Risks Regression\n\n")
   
   if (!is.null(x$call)){ 
@@ -1324,20 +1425,29 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
     cat("\n========================================\n")
     
     if (!x$converged[[j]]){ 
-      cat("convergence : ", x$converged[[j]], "\n", "[", x$message[[j]], "]\n", sep = "")
-      next
-      }
+      cat("convergence : ", x$converged[[j]], "\n", "[", x$message[[j]], "]\n",
+          "The estimates below are computed at these parameter values ",
+          "and should not be interpreted.\n", sep = "")
+    }
     
     cat("\nRegression coefficients :\n\n")
-    printCoefmat(x$coef[[j]], digits = digits, signif.stars = TRUE, na.print = "",
-                 has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:3, tst.ind = 4)
+    if (variance) {
+      printCoefmat(x$coef[[j]], digits = digits, signif.stars = TRUE,
+                   has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:3, tst.ind = 4)
+    } else {
+      print(x$coef[[j]], digits = digits)
+    }
     cat("\n")
     cat("----------------------------------------\n\n")
-    print(x$conf_int[[j]], na.print = "");        cat("\n");
+    print(x$conf_int[[j]]);        cat("\n");
     cat("----------------------------------------\n\n")
     cat("Parameters :\n\n")
-    printCoefmat(x$baseline[[j]], digits = digits, signif.stars = TRUE, na.print = "",
+    if (variance) {
+    printCoefmat(x$base_param[[j]], digits = digits, signif.stars = TRUE,
                  has.Pvalue = TRUE, P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
+    } else {
+      print(x$base_param[[j]], digits = digits)
+    }
     cat("\n")
     
     
@@ -1349,7 +1459,7 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
       cat("H0 : eta = 0\n\n")
       
       printCoefmat(x$shape[[j]], digits = digits, signif.stars = TRUE, has.Pvalue = TRUE,
-                   P.values = TRUE, cs.ind = 1, tst.ind = 2, na.print = "")
+                   P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
       
       cat("\n")
     }
@@ -1607,6 +1717,8 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   xmh_obs_list <- vector("list", n_case)
   t_boundary_list <- vector("list", n_case)
   eta_list <- vector("list", n_case)
+  converged <- vector("list", n_case)
+  msg <- vector("list", n_case)
   
   names(pred_list) <- model[case]
   names(base_haz_list) <- model[case]
@@ -1615,6 +1727,8 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   names(xmh_obs_list) <- model[case]
   names(t_boundary_list) <- model[case]
   names(eta_list) <- model[case]
+  names(converged) <- model[case]
+  names(msg) <- model[case]
   
   for (l in 1:n_case) {
     i <- case[l]
@@ -1626,7 +1740,8 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
     xmh_base_list[[l]] <- vector("list", length(event))
     xmh_obs_list[[l]] <- vector("list", length(event))
     t_boundary_list[[l]] <- vector("list", length(event))
-
+    converged[[l]] <- object$mle_case_all[[i]]$convergence == 0
+    msg[[l]] <- object$mle_case_all[[i]]$message
     
     names(pred_list[[l]]) <- paste0("event ", event)
     names(base_haz_list[[l]]) <- paste0("event ", event)
@@ -1896,7 +2011,9 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
               labels = labs,
               case_model = object$case_model,
               case = case,
-              event = event
+              event = event,
+              converged = converged,
+              message = msg
               )
   
   class(out) <- "predict.pcrr"
@@ -1936,6 +2053,14 @@ print.predict.pcrr <- function(x, digits = 4, ...){
     cat(x$case_model[i])
     cat("\n========================================\n")
     
+    if (!x$converged[[l]]) {
+      cat("\nconvergence : ", x$converged[[l]], "\n",
+          "[", x$message[[l]], "]\n",
+          "The predictions below are computed at these parameter values ",
+          "and should not be interpreted.\n", sep = "")
+    }
+    
+
     for (e in 1:length(x$event)) {
       
       xmh_base_le   <- x$xmh_base[[l]][[e]]
@@ -2105,7 +2230,10 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
   # case selection
   avail_case <- x$case
   if (is.null(case)) {
-    case <- avail_case[1]
+    ok <- if (is.null(x$converged)) rep(TRUE, length(avail_case))
+    else vapply(seq_along(avail_case), function(l) isTRUE(x$converged[[l]]), logical(1))
+    pick <- if (any(ok)) avail_case[ok] else avail_case
+    case <- pick[1]
     if (length(avail_case) > 1)
       message("Several model cases are available; showing case ", case,
               " only.\nUse `case = ` to select or overlay cases :\n",
@@ -2119,6 +2247,14 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
   }
   lpos   <- match(case, avail_case)   # position inside the stored lists
   n_case <- length(case)
+  
+  if (!is.null(x$converged)) {
+    bad <- which(!vapply(lpos, function(l) isTRUE(x$converged[[l]]), logical(1)))
+    if (length(bad) > 0)
+      warning("The following model case(s) did not converge. The curves are ",
+              "drawn at these parameter values and should not be interpreted :\n",
+              paste(x$case_model[case[bad]], collapse = "\n"), call. = FALSE)
+  }
   
 
   # event selection
@@ -2500,9 +2636,8 @@ cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
   
   tol <- 1e-12
   
-  
-  
-  t_boundary <- suppressWarnings(predict.pcrr(object, cov, case = case, event = event)$t_boundary)
+  pred <- suppressWarnings(predict.pcrr(object, cov, case = case, event = event))
+  t_boundary <- pred$t_boundary
   
   cure_list <- vector("list", n_case)
   status_list <- vector("list", n_case)
@@ -2588,7 +2723,9 @@ cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
     t_boundary = t_boundary,
     case_model = object$case_model,
     case = case,
-    event = event
+    event = event,
+    converged = pred$converged,
+    message = pred$message
   )
   
   class(result) <- "cure.pcrr"
@@ -2627,6 +2764,13 @@ print.cure.pcrr <- function(x, digits = 8, ...) {
     cat("\n\n========================================\n")
     cat(x$case_model[i])
     cat("\n========================================\n")
+    
+    if (!x$converged[[l]]) {
+      cat("\nconvergence : ", x$converged[[l]], "\n",
+          "[", x$message[[l]], "]\n",
+          "The cure fractions below are computed at these parameter values ",
+          "and should not be interpreted.\n", sep = "")
+    }
     
     for (e in 1:length(x$event)) {
       cat("\n[event : ", x$event[e], "]\n\n", sep = "")
@@ -3777,9 +3921,9 @@ NULL
   # Hessian
   hessian <- matrix(0, nrow = n_param, ncol = n_param)
   #dimnames(hessian) <- list(param_names, param_names)
-  for (p1 in 1:n_param){
-    for (p2 in 1:n_param){
-      hessian[p1, p2] <- sum( eval( hessian_exprs[p1, p2][[1]] ) )
+  for (i1 in 1:n_param){
+    for (i2 in 1:n_param){
+      hessian[i1, i2] <- sum( eval( hessian_exprs[i1, i2][[1]] ) )
     }
   }
   

@@ -13,7 +13,7 @@ pcrr(
   failcode = 1,
   cencode = 0,
   na.action = na.omit,
-  gtol = 1e-06,
+  gtol = 1e-10,
   maxiter = 300,
   init,
   variance = TRUE,
