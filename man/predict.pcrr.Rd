@@ -21,40 +21,45 @@ observed time range are used.}
 numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
 every available case is used.}
 
-\item{event}{integer code identifying the event type for prediction.
-If omitted, the first event type (the event of interest) in the fitted model is used.}
+\item{event}{vector of event codes, as stored in \code{object$mapping},
+identifying the event types for which predictions are computed. If
+\code{NULL} (default), every event type in the fitted model is used. A code
+that does not appear in \code{object$mapping} is an error.}
 
 \item{...}{further arguments passed to or from other methods.}
 }
 \value{
-An object of class \code{"predict.pcrr"}, containing:
-\item{pred}{matrix containing time points in the first column and
-predicted cumulative incidence functions in subsequent columns.}
-\item{baseline_hazard}{matrix containing the baseline hazard evaluated
-at the specified time points.}
-\item{subdistribution_hazard}{matrix containing predicted
-subdistribution hazards for each covariate profile.}
-\item{xmh_base}{baseline maximum hazard time for the
-\code{"gompertz3"} and \code{"logistic"} distribution when a maximum exists;
-otherwise \code{NULL}.}
-\item{xmh_obs}{vector of covariate-specific maximum or minimum times of the
-subdistribution hazard obtained numerically for
-\code{"gompertz3"} and \code{"logistic"} models; otherwise \code{NULL}.}
-\item{t_boundary}{vector of covariate-specific time points at which
-the GOR transformation becomes undefined, i.e.,
+An object of class \code{"predict.pcrr"}. The first six components are
+nested lists indexed first by selected model case, named by the case
+labels, and then by selected event:
+\describe{
+\item{\code{pred}}{matrix with the time points in the first column and one
+column of predicted cumulative incidence per covariate profile.}
+\item{\code{baseline_hazard}}{matrix with the time points and the baseline
+hazard, which carries no covariates.}
+\item{\code{subdistribution_hazard}}{matrix with the time points and one
+column of predicted subdistribution hazard per covariate profile. Beyond a
+finite \code{t_boundary} the entries are \code{NA} rather than zero.}
+\item{\code{xmh_base}}{turning point of the baseline hazard under
+\code{"gompertz3"} and \code{"logistic"} when one exists at a positive
+time, and \code{NULL} otherwise. It is always \code{NULL} under
+\code{"gompertz2"}, whose baseline hazard is monotone.}
+\item{\code{xmh_obs}}{named vector of profile-specific turning points of
+the subdistribution hazard, found numerically; \code{NULL} where none
+exists, and always \code{NULL} under \code{"gompertz2"}.}
+\item{\code{t_boundary}}{named vector of the times at which
 \eqn{1+\widehat{\alpha}_k\exp(\mathbf{z}^{\top}\boldsymbol{\widehat{\beta}}_k)
- \widehat{u}_k(t)=0}. If this quantity remains positive for all
-\eqn{t\geq0}, \code{Inf} is returned. These values define the
-valid time domain for cumulative incidence function and
-subdistribution hazard calculations.}
-\item{distribution}{the baseline distribution used in the fitted model.}
-\item{eta}{estimated shape parameter of the three-parameter
-Gompertz distribution. This parameter influences the shape of the
-baseline hazard function, including unimodal and U-shaped
-patterns. Returned only for
-\code{distribution = "gompertz3"}; otherwise \code{NULL}.}
-\item{labels}{labels corresponding to each covariate profile.}
-\item{event}{event type for which predictions were obtained.}
+  \widehat{u}_k(t)} reaches zero, and \code{Inf} where it does not. Since a
+model case fixes \eqn{\alpha_k} at 0 or 1, that quantity is at least 1
+throughout and these entries are \code{Inf}; a finite value can arise only
+in the unconstrained fit.}
+}
+
+The remaining components are scalar: \code{distribution}, \code{eta} (the
+fitted \eqn{\eta_k}, nested in the same way, for \code{"gompertz3"} only and
+\code{NULL} otherwise), \code{labels} (the covariate profile labels),
+\code{case} (the indices selected), \code{case_model} (the labels of all
+available cases) and \code{event} (the event codes selected).
 }
 \description{
 Computes predicted cumulative incidence functions and predicted
@@ -68,11 +73,15 @@ generalized odds-rate (GOR) transformation model:
 \exp(\mathbf{z}^{\top}\widehat{\boldsymbol{\beta}}_k) \widehat{u}_k(t)
 \right]^{-1/\widehat{\alpha}_k}}
 where \eqn{\widehat{u}_k(t)} is the fitted cumulative
-baseline hazard corresponding to the selected distribution.
+baseline hazard corresponding to the selected distribution, and
+\eqn{\widehat{\alpha}_k} is the value at which the link was fixed in the
+model case being used, that is 0 under PH or 1 under PO.
 
-Predictions are obtained separately for each row of \code{cov},
-with one cumulative incidence curve returned for each covariate
-profile.
+Predictions are obtained separately for each row of \code{cov}, for each
+event selected by \code{event} and for each model case selected by
+\code{case}, with one cumulative incidence curve per combination. Both
+\code{case} and \code{event} default to everything available, so a bare
+call returns the full set and narrowing it is the deliberate act.
 
 The fitted subdistribution hazard is evaluated as
 \deqn{\lambda_k^{CI}(t;\mathbf{z}) = \frac{
@@ -135,9 +144,27 @@ values.
 These profile-specific maximum or minimum hazard times are obtained
 numerically by solving
 \eqn{\frac{d}{dt}\lambda_k^{CI}(t;\mathbf{z})=0.}
+The two coincide only as \eqn{\alpha_k \to 0}, where the derivative
+condition reduces to \eqn{u_k''(t)=0} and so does not involve the
+covariates: under PH the covariates scale the hazard and leave its peak
+where it is. The search is confined to the range of \code{times}, so a
+turning point beyond the last prediction time is not found, and a value
+sitting at the edge of the range should be read as a sign of that rather
+than as a peak.
+
+For \code{distribution = "gompertz2"} no turning point is reported.
+Substituting the two-parameter baseline into the derivative above leaves
+\eqn{\tau_k e^{\rho_k t}\{\rho_k -
+\alpha_k \exp(\mathbf{z}^{\top}\boldsymbol{\beta}_k)\tau_k\}}, whose sign
+does not depend on \eqn{t}: that subdistribution hazard is monotone for
+every covariate profile, increasing when
+\eqn{\rho_k > \alpha_k \exp(\mathbf{z}^{\top}\boldsymbol{\beta}_k)\tau_k}
+and decreasing otherwise.
 }
 \seealso{
 \code{\link{pcrr}},
+\code{\link{print.pcrr}},
 \code{\link{print.predict.pcrr}},
-\code{\link{plot.predict.pcrr}}
+\code{\link{plot.predict.pcrr}},
+\code{\link{cure.pcrr}}
 }

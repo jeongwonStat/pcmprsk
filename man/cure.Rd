@@ -14,36 +14,47 @@ cure(object, ...)
 
 \item{...}{further arguments passed to or from methods.}
 
-\item{cov}{numeric matrix of covariate values.}
+\item{cov}{numeric matrix of covariate values, one row per profile. A
+vector is accepted and is reshaped row-wise when its length is a multiple
+of the number of covariates.}
 
 \item{case}{integer vector selecting the transformation-model cases to use,
 numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
 every available case is used.}
 
-\item{event}{event type for which the cure fraction is computed.
-The default is the failure type of interest.}
+\item{event}{vector of event codes, as stored in \code{object$mapping}, for
+which the cure fraction is computed. If \code{NULL} (default), every event
+type in the fitted model is used. Reporting every cause is the sensible
+default here, since all of them are estimated from the same likelihood.}
 }
 \value{
 A numeric vector containing the estimated cure fractions.
 
-An object of class \code{"cure.pcrr"} containing the following components:
+An object of class \code{"cure.pcrr"}. The first three components are nested
+lists indexed first by selected model case, named by the case labels, and
+then by selected event:
 \describe{
-\item{\code{cure}}{a numeric vector of estimated cure fractions, with one
-entry per row of \code{cov}. the value is positive for \code{"cure"}
-profiles, zero for \code{"no cure (asymptotic)"} profiles, and
-\code{NA} for \code{"no cure (finite support)"} profiles.}
-\item{\code{status}}{a character vector classifying each covariate profile
-as \code{"cure"}, \code{"no cure (asymptotic)"}, or
-\code{"no cure (finite support)"}.}
-\item{\code{t_boundary}}{a numeric vector giving the time at which
-\eqn{A_k(t; \mathbf{z})} reaches zero, if such a finite time exists, and
-\code{Inf} otherwise. It is finite only for
+\item{\code{cure}}{estimated cure fractions, one entry per row of
+\code{cov}. Positive for \code{"cure"} profiles, zero for
+\code{"no cure (asymptotic)"} profiles and \code{NA} for
 \code{"no cure (finite support)"} profiles.}
+\item{\code{status}}{the classification of each profile, as described
+above.}
+\item{\code{t_boundary}}{the time at which \eqn{A_k(t; \mathbf{z})}
+reaches zero where such a finite time exists, and \code{Inf} otherwise.
+In a fit from \code{\link{pcrr}} it is always \code{Inf}, for the reason
+given above.}
 }
 
-For profiles classified as \code{"no cure (finite support)"}, the
-cumulative incidence function reaches the boundary of the GOR
-transformation domain, which is 1, at \code{t_boundary} and is undefined afterwards.
+The remaining components are \code{case} (the indices selected),
+\code{case_model} (the labels of all available cases) and \code{event} (the
+event codes selected).
+
+Because the estimate is a model-based extrapolation beyond the observed
+follow-up, it is a statement about the fitted distribution rather than an
+observed proportion. Where more than one model case survived, comparing the
+cure fractions across cases is informative: the cases differ most where the
+data run out, which is exactly where this quantity is read.
 }
 \description{
 Generic function for estimating cure fractions from fitted
@@ -121,8 +132,16 @@ function reaches one and is undefined thereafter. Thus, a cure fraction
 is not defined.
 }
 }
+
+The third state cannot occur in a fit obtained from \code{\link{pcrr}}.
+\eqn{A_k(t;\mathbf{z})} can decrease only when \eqn{\alpha_k < 0}, whereas
+every model case fixes \eqn{\alpha_k} at 0 or 1, so
+\eqn{A_k(t;\mathbf{z}) \geq 1} throughout and \code{t_boundary} is
+\code{Inf}. It is retained because it is a genuine state of the
+transformation model for negative \eqn{\alpha_k}.
 }
 \seealso{
-\code{\link{pcrr}}
-\code{\link{print.cure.pcrr}}
+\code{\link{pcrr}},
+\code{\link{print.cure.pcrr}},
+\code{\link{predict.pcrr}}
 }

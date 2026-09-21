@@ -55,11 +55,18 @@ If both \code{dist} and \code{distribution} are specified,
 \item{init}{a user-specified initial parameter vector.
 See \code{\link{pcrr-parameter-order}} for the parameter ordering.}
 
-\item{variance}{logical value indicating whether the variance-covariance
-matrix is computed. The default is \code{TRUE}. If \code{FALSE}, only the
-maximum likelihood estimates and the score vector are computed.}
+\item{variance}{logical value indicating whether variance estimates and
+Wald tests are computed for the possible model assumption cases.
+Variance estimation for the unconstrained GOR model is always performed
+to conduct the PH and PO model assumption tests. If \code{TRUE}, the
+inverse information matrix is additionally computed for each possible
+model assumption case, allowing Wald inference for those models. If
+\code{FALSE}, the optimization for each possible model assumption case
+is still performed, but their variance estimates and Wald tests are not
+computed. The default is \code{TRUE}.}
 
-\item{sig.level}{a significant level for model assumption test.}
+\item{sig.level}{numeric value specifying the significance level used for
+the model assumption tests. The default is \code{0.05}.}
 }
 \value{
 An object of class \code{"pcrr"}, which is a list containing the following components:
@@ -74,6 +81,9 @@ stored according to the parameter ordering described in \code{\link{pcrr-paramet
 \item{\code{iter}}{number of iterations performed by the optimization algorithm.}
 \item{\code{message}}{message returned by the optimization routine.}
 \item{\code{call}}{matched function call.}
+\item{\code{x}}{The processed \code{ftime} vector containing the observed event or censoring times.}
+\item{\code{delta}}{The processed \code{fstatus} vector converted to a matrix of event indicators.}
+\item{\code{z}}{The processed \code{cov} matrix containing the covariate values.}
 \item{\code{n}}{total number of observations in the original data set.}
 \item{\code{n_missing}}{number of observations removed due to missing values.}
 \item{\code{k}}{number of event categories, excluding the censoring category.}
@@ -82,7 +92,11 @@ stored according to the parameter ordering described in \code{\link{pcrr-paramet
 \item{\code{cov_names}}{names of the covariates.}
 \item{\code{mapping}}{mapping between the original event labels and the internal event codes.}
 \item{\code{maxtime}}{maximum observed follow-up time.}
-\item{\code{fixed_alpha}}{alpha values specified through the \code{model} argument.}
+\item{\code{case_all}}{the alpha values for all possible model assumption cases.}
+\item{\code{case_model}}{labels describing all possible model assumption cases.}
+\item{\code{mle_case_all}}{the results of \code{nlminb()} optimization for all possible model assumption cases.}
+\item{\code{sco_case_all}}{score vectors evaluated at the MLEs for all possible model assumption cases.}
+\item{\code{hess_case_all}}{hessian matrices evaluated at the MLEs for all possible model assumption cases.}
 }
 \description{
 Fits parametric regression models for the cumulative incidence function
@@ -109,7 +123,7 @@ two-parameter baseline, so \code{"gompertz2"} is nested within
 \code{"gompertz3"} and the hypothesis \eqn{H_0: \eta_k = 0} can be tested;
 this test is reported by \code{\link{summary.pcrr}}.
 
-The hazard is unimodal when \eqn{\rho_k > 0} and \eqn{-1 < \eta_k < 0}, or
+The baseline hazard is unimodal when \eqn{\rho_k > 0} and \eqn{-1 < \eta_k < 0}, or
 when \eqn{\rho_k < 0} and \eqn{\eta_k < -1}, in which case it peaks at
 \eqn{\frac{1}{\rho_k} \log(-\frac{1}{\eta_k})}. Fitting \code{"gompertz3"} to data with no
 unimodal hazard usually makes the extra parameter unidentifiable, which shows
@@ -119,10 +133,20 @@ With \code{distribution = "logistic"}, the baseline is the three-parameter
 modified logistic model (Cheng, 2009), with cumulative baseline function
 \deqn{u_k(t) = -\log\left\{1 - \dfrac{p_k e^{b_k(t-c_k)} - p_k e^{-b_k c_k}}
 {1 + e^{b_k(t-c_k)}}\right\}.}
-The parameter \eqn{p_k} determines the long-term level of the cumulative
-incidence, with \eqn{u_k(t) \to -\log(1-p_k)} as \eqn{t\to\infty},
-while \eqn{b_k} controls the rate of increase and \eqn{c_k} determines the
-location of the rise. The baseline hazard can be unimodal under
+Here \eqn{b_k} controls the rate of increase and \eqn{c_k} determines the
+location of the rise, while \eqn{u_k(t) \to -\log(1-p_k)} as
+\eqn{t\to\infty}, so the baseline cumulative hazard is finite for every
+\eqn{p_k < 1}.
+
+The parameter \eqn{p_k} is the asymptote of the baseline cumulative
+incidence \eqn{1-\exp\{-u_k(t)\}}, not of the fitted curve. The asymptote
+implied by the fitted model is
+\eqn{1 - \{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k)
+u_k(\infty)\}^{-1/\alpha_k}}, a monotone function of \eqn{p_k} that equals
+it only as \eqn{\alpha_k \to 0}. Under the proportional odds link
+(\eqn{\alpha_k = 1}) the two differ materially, so the long-term event
+probability should be taken from \code{\link{cure.pcrr}} rather than read
+off \eqn{\widehat{p}_k}. The baseline hazard can be unimodal under
 \eqn{\log\left(\frac{1+p_k e^{-b_k c_k}}{1-p_k}\right)\geq -2b_k c_k,}
 in which case its peak occurs at \eqn{x_{\mathrm{mh}} = \frac{1}{2b_k}
 \log\left(\frac{1+p_k e^{-b_k c_k}}{1-p_k}\right)+c_k.}
@@ -146,15 +170,59 @@ point at which this quantity becomes negative and remains at 1 thereafter,
 whereas \code{\link{cure.pcrr}} returns \code{NA} for the corresponding
 cure fraction.
 
+Note that this situation cannot arise in the fits that are reported. Every
+model case fixes \eqn{\alpha_k} at 0 or 1 (see \emph{Model cases} below),
+so \eqn{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k) u_k(t)
+\geq 1} throughout and no finite boundary exists. The discussion above
+therefore applies to the unconstrained fit used for the assumption tests,
+whose coefficients are returned in \code{coef}.
+
 \emph{Notation.} Haile et al. (2016) write the three baseline parameters as
 \eqn{(\alpha, \beta, \eta)}. They appear here as \code{rho}, \code{tau} and
 \code{eta}, because \code{alpha} and \code{beta} already denote the link
 parameter and the regression coefficients of Jeong and Fine (2007).
 
-Model parameters are estimated by maximum likelihood using \code{\link[stats]{nlminb}}.
-When \code{variance = TRUE}, standard errors are obtained from the inverse of the observed information matrix.
-The returned object is of class \code{"pcrr"} and supports the S3 methods
-\code{print()}, \code{summary()}, \code{predict()}, and \code{cure()}.
+\emph{Model cases.} Only two values of \eqn{\alpha_k} admit a direct
+reading: at \eqn{\alpha_k = 0} the quantity
+\eqn{\exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k)} is a subdistribution
+hazard ratio (proportional hazards, PH), and at \eqn{\alpha_k = 1} it is an
+odds ratio (proportional odds, PO). At any other value it is neither.
+\code{pcrr} therefore treats the unconstrained \eqn{\widehat{\alpha}_k} as
+a diagnostic rather than as a result, and proceeds in three stages.
+
+\enumerate{
+\item The model is fitted once with every \eqn{\alpha_k} free.
+\item For each cause, \eqn{H_0\!: \alpha_k = 0} and
+\eqn{H_0\!: \alpha_k = 1} are tested by Wald statistics at
+\code{sig.level}. A cause for which neither hypothesis is rejected admits
+both links; one for which exactly one is rejected admits the other.
+\item The admissible combinations across causes are enumerated as
+numbered \emph{model cases}, and the model is refitted at each of them
+with the corresponding \eqn{\alpha_k} held fixed.
+}
+
+The case numbering is shown by \code{\link{print.pcrr}} and is the
+\code{case} argument of \code{\link{summary.pcrr}},
+\code{\link{predict.pcrr}}, \code{\link{cure.pcrr}},
+\code{\link{plot.pcrr}} and \code{\link{plot.predict.pcrr}}. The number of
+cases is the product of the number of links admitted by each cause, so it
+lies between 1 and \eqn{2^K}; the first cause varies fastest in the
+enumeration. There is no argument for specifying a link by hand, since a
+link outside the admissible set is one the data have rejected.
+
+If both hypotheses are rejected for some cause, or if neither can be
+tested because the standard error of \eqn{\widehat{\alpha}_k} is not
+finite, no interpretable case survives for that cause and hence none
+survives at all. \code{pcrr} then stops with an error naming the causes
+responsible, and no object is returned. Because all causes enter one
+likelihood, the offending cause cannot simply be dropped and the others
+reported.
+
+Model parameters are estimated by maximum likelihood using
+\code{\link[stats]{nlminb}}, with standard errors obtained from the inverse
+of the observed information matrix. The returned object is of class
+\code{"pcrr"} and supports the S3 methods \code{print()}, \code{summary()},
+\code{plot()}, \code{predict()}, and \code{cure()}.
 }
 \examples{
 ## Example 1: Fit the model with default initial values
@@ -177,9 +245,11 @@ event <- ifelse(time == t1, 1, ifelse(time == t2, 2, 0))
 
 fit1 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2))
 print(fit1)
-summary(fit1)
+fit1$case_model
 
-pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)))
+summary(fit1, case = c(1, 3))
+
+pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = 1, event = 1)
 print(pred1)
 
 plot(pred1)

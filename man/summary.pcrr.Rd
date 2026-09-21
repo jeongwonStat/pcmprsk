@@ -19,30 +19,62 @@
 numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
 every available case is used.}
 
-\item{conf.level}{confidence level for confidence intervals. The default is \code{0.95}.}
+\item{conf.level}{confidence level for the confidence intervals. The
+default is \code{0.95}. It affects the interval table only; the p-values in
+the coefficient table always test \eqn{H_0\!: \beta = 0} and do not move
+with it, so a 90\\% interval excluding 1 alongside a p-value above 0.05 is
+expected rather than contradictory.}
 
 \item{digits}{number of digits to print.}
 
 \item{...}{further arguments passed to or from other methods.}
 }
 \value{
-An object of class \code{"summary.pcrr"}, a list whose components include
-\code{coef} (regression coefficients), \code{conf_int} (confidence intervals
-on the exponentiated scale), \code{baseline} (the estimated link parameter
-\code{alpha} and distribution-specific baseline parameters: \code{rho} and
-\code{tau} for \code{"gompertz2"}, \code{rho}, \code{tau}, and \code{eta} for
-\code{"gompertz3"}, and \code{b}, \code{c}, and \code{p} for
-\code{"logistic"}), \code{link_ph} and \code{link_po} (link function tests),
-and \code{shape} (the \eqn{\eta = 0} test for \code{"gompertz3"}, and
-\code{NULL} for \code{"gompertz2"} and \code{"logistic"}).
+An object of class \code{"summary.pcrr"}. The following components are lists
+with one element per selected model case, named by the case labels:
+\describe{
+\item{\code{coef}}{regression coefficients, with standard errors, Wald
+statistics and p-values.}
+\item{\code{conf_int}}{the same coefficients on the exponentiated scale
+with confidence limits at \code{conf.level}.}
+\item{\code{baseline}}{the distribution-specific baseline parameters:
+\code{rho} and \code{tau} for \code{"gompertz2"}, \code{rho}, \code{tau}
+and \code{eta} for \code{"gompertz3"}, and \code{b}, \code{c} and
+\code{p} for \code{"logistic"}. \code{alpha} is fixed within a case and
+is not included.}
+\item{\code{shape}}{the \eqn{H_0\!: \eta_k = 0} test under
+\code{"gompertz3"}; an empty list for the other baselines.}
+\item{\code{inf}, \code{invinf}}{observed information matrix and its
+inverse. A singular matrix is reported with a warning and filled with
+\code{NA}.}
+\item{\code{converged}, \code{message}, \code{loglik}, \code{iter}}{
+convergence status, optimizer message, maximised log-likelihood and
+iteration count of each case. \code{loglik} is \code{NaN} where the
+objective terminated on its internal penalty, which is not a fit even
+when \code{converged} is \code{TRUE}.}
+}
+
+The remaining components are scalar: \code{call}, \code{n},
+\code{n_missing}, \code{distribution}, \code{mapping}, \code{digits},
+\code{case} (the indices selected) and \code{case_model} (the labels of all
+available cases).
 }
 \description{
 Produces a summary of a fitted \code{"pcrr"} object, including
-regression coefficients, confidence intervals, baseline parameter
-estimates, and link function tests.
+regression coefficients, confidence intervals and baseline parameter
+estimates, separately for each selected model case.
 }
 \details{
-Four tables are produced.
+A \code{"pcrr"} object holds one fit per model case (see \code{\link{pcrr}}),
+and \code{summary} reports the tables below for each case selected by
+\code{case}, which defaults to all of them. Every component of the returned
+object is therefore a list indexed by the selected cases.
+
+Because \eqn{\alpha_k} is held fixed within a case, it is not an estimated
+parameter of these fits and does not appear in the tables. The assumption
+tests that chose the cases are reported by \code{\link{print.pcrr}}.
+
+Three tables are produced, with a fourth under \code{"gompertz3"}.
 
 \emph{Regression coefficients.} For each covariate and cause the estimate
 \eqn{\hat{\beta}}, its standard error, the Wald statistic
@@ -65,16 +97,14 @@ without exponentiation, since they are not ratios. For
 \eqn{\tau_k} are reported. For \code{distribution = "gompertz3"}, the
 additional shape parameter \eqn{\eta_k} is also reported. For
 \code{distribution = "logistic"}, the baseline parameters \eqn{b_k},
-\eqn{c_k}, and \eqn{p_k} are reported. The link parameter \eqn{\alpha_k} is
-also reported for all three distributions.
+\eqn{c_k}, and \eqn{p_k} are reported.
 
-\emph{Link function tests.} Two Wald tests are reported for each
-\eqn{\alpha_k}: \eqn{H_0\!: \alpha_k = 0}, under which the model reduces to a
-proportional hazards model, and \eqn{H_0\!: \alpha_k = 1}, under which it
-reduces to a proportional odds model. They are computed as
-\eqn{(\hat{\alpha}_k - 0)/\mathrm{se}(\hat{\alpha}_k)} and
-\eqn{(\hat{\alpha}_k - 1)/\mathrm{se}(\hat{\alpha}_k)}, and indicate whether a
-simpler, more interpretable link is compatible with the data.
+These parameters describe the shape of the fitted curve and are not
+themselves quantities of the fitted model in the sense their names suggest.
+In particular \eqn{\widehat{p}_k} under \code{"logistic"} is not the
+long-term event probability unless \eqn{\alpha_k = 0}; use
+\code{\link{cure.pcrr}} for that, and \code{\link{predict.pcrr}} for the
+hazard and its turning points.
 
 \emph{Baseline shape test.} For \code{distribution = "gompertz3"} an
 additional Wald test of \eqn{H_0: \eta_k = 0} is reported. Under this null the

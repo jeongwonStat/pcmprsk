@@ -19,6 +19,13 @@ and \code{beta_k} denotes the regression coefficients for the covariates.
 The coefficients are ordered as \code{beta_k1, beta_k2, ..., beta_kP}
 and follow the column order of the input covariate matrix.
 
+The blocks follow the internal cause order rather than the order in which
+the codes appear in the data: \code{failcode} occupies the first block and
+the remaining event codes follow in ascending order. This ordering is
+recorded in the \code{mapping} component of a fitted object, which is worth
+inspecting before writing an \code{init} vector by hand. The censoring code
+has no block.
+
 \subsection{Gompertz2}{
 
 For \code{distribution = "gompertz2"}, the parameters of \eqn{u_k(t)}

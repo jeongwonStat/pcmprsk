@@ -19,23 +19,25 @@ results. Defaults to \code{max(options()$digits - 4, 3)}.}
 The input object \code{x}, returned invisibly.
 }
 \description{
-Prints the estimated regression coefficients from a fitted parametric
-competing risks regression model. When variance estimates are available,
-standard errors, Wald z-statistics, and two-sided p-values are also shown.
+Prints the convergence status and model assumption tests for a fitted
+parametric competing risks regression model. The model assumption tests
+are based on the estimated shape parameter \eqn{\alpha} from the
+generalized odds-rate (GOR) model, in which \eqn{\alpha} is estimated
+without imposing a fixed value.
 }
 \details{
-When variance estimates are available, the function additionally reports
-tests of the proportional hazards (PH) and proportional odds (PO)
-assumptions based on the shape parameter \eqn{\alpha}. The PH hypothesis
-corresponds to \eqn{H_0: \alpha = 0}, while the PO hypothesis corresponds
-to \eqn{H_0: \alpha = 1}.
+For each event, the function tests the proportional hazards (PH) and
+proportional odds (PO) model assumptions based on the estimated
+\eqn{\alpha}. The PH model corresponds to \eqn{H_0: \alpha = 0}, while
+the PO model corresponds to \eqn{H_0: \alpha = 1}. For each hypothesis,
+the estimated value of \eqn{\alpha}, its standard error, Wald z-statistic,
+and two-sided p-value are displayed.
 
-If an \eqn{\alpha} parameter was fixed at 0 or 1 when fitting the model,
-the corresponding test is not performed and the associated entries are
-displayed as \code{(Fixed)}.
+The function also displays all possible model assumption cases considered
+in the fitting procedure. Each case specifies whether the PH or PO model
+is assumed for each event.
 }
 \seealso{
 \code{\link{pcrr}},
-\code{\link{plot.pcrr}},
 \code{\link{summary.pcrr}}
 }

@@ -25,7 +25,7 @@
 #' \code{"gompertz3"} and the hypothesis \eqn{H_0: \eta_k = 0} can be tested;
 #' this test is reported by \code{\link{summary.pcrr}}.
 #'
-#' The hazard is unimodal when \eqn{\rho_k > 0} and \eqn{-1 < \eta_k < 0}, or
+#' The baseline hazard is unimodal when \eqn{\rho_k > 0} and \eqn{-1 < \eta_k < 0}, or
 #' when \eqn{\rho_k < 0} and \eqn{\eta_k < -1}, in which case it peaks at
 #' \eqn{\frac{1}{\rho_k} \log(-\frac{1}{\eta_k})}. Fitting \code{"gompertz3"} to data with no
 #' unimodal hazard usually makes the extra parameter unidentifiable, which shows
@@ -35,10 +35,20 @@
 #' modified logistic model (Cheng, 2009), with cumulative baseline function
 #' \deqn{u_k(t) = -\log\left\{1 - \dfrac{p_k e^{b_k(t-c_k)} - p_k e^{-b_k c_k}}
 #' {1 + e^{b_k(t-c_k)}}\right\}.}
-#' The parameter \eqn{p_k} determines the long-term level of the cumulative
-#' incidence, with \eqn{u_k(t) \to -\log(1-p_k)} as \eqn{t\to\infty},
-#' while \eqn{b_k} controls the rate of increase and \eqn{c_k} determines the
-#' location of the rise. The baseline hazard can be unimodal under
+#' Here \eqn{b_k} controls the rate of increase and \eqn{c_k} determines the
+#' location of the rise, while \eqn{u_k(t) \to -\log(1-p_k)} as
+#' \eqn{t\to\infty}, so the baseline cumulative hazard is finite for every
+#' \eqn{p_k < 1}.
+#'
+#' The parameter \eqn{p_k} is the asymptote of the baseline cumulative
+#' incidence \eqn{1-\exp\{-u_k(t)\}}, not of the fitted curve. The asymptote
+#' implied by the fitted model is
+#' \eqn{1 - \{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k)
+#' u_k(\infty)\}^{-1/\alpha_k}}, a monotone function of \eqn{p_k} that equals
+#' it only as \eqn{\alpha_k \to 0}. Under the proportional odds link
+#' (\eqn{\alpha_k = 1}) the two differ materially, so the long-term event
+#' probability should be taken from \code{\link{cure.pcrr}} rather than read
+#' off \eqn{\widehat{p}_k}. The baseline hazard can be unimodal under
 #' \eqn{\log\left(\frac{1+p_k e^{-b_k c_k}}{1-p_k}\right)\geq -2b_k c_k,}
 #' in which case its peak occurs at \eqn{x_{\mathrm{mh}} = \frac{1}{2b_k}
 #' \log\left(\frac{1+p_k e^{-b_k c_k}}{1-p_k}\right)+c_k.}
@@ -62,15 +72,59 @@
 #' whereas \code{\link{cure.pcrr}} returns \code{NA} for the corresponding
 #' cure fraction.
 #'
+#' Note that this situation cannot arise in the fits that are reported. Every
+#' model case fixes \eqn{\alpha_k} at 0 or 1 (see \emph{Model cases} below),
+#' so \eqn{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k) u_k(t)
+#' \geq 1} throughout and no finite boundary exists. The discussion above
+#' therefore applies to the unconstrained fit used for the assumption tests,
+#' whose coefficients are returned in \code{coef}.
+#'
 #' \emph{Notation.} Haile et al. (2016) write the three baseline parameters as
 #' \eqn{(\alpha, \beta, \eta)}. They appear here as \code{rho}, \code{tau} and
 #' \code{eta}, because \code{alpha} and \code{beta} already denote the link
 #' parameter and the regression coefficients of Jeong and Fine (2007).
 #'
-#' Model parameters are estimated by maximum likelihood using \code{\link[stats]{nlminb}}.
-#' When \code{variance = TRUE}, standard errors are obtained from the inverse of the observed information matrix. 
-#' The returned object is of class \code{"pcrr"} and supports the S3 methods 
-#' \code{print()}, \code{summary()}, \code{predict()}, and \code{cure()}.
+#' \emph{Model cases.} Only two values of \eqn{\alpha_k} admit a direct
+#' reading: at \eqn{\alpha_k = 0} the quantity
+#' \eqn{\exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k)} is a subdistribution
+#' hazard ratio (proportional hazards, PH), and at \eqn{\alpha_k = 1} it is an
+#' odds ratio (proportional odds, PO). At any other value it is neither.
+#' \code{pcrr} therefore treats the unconstrained \eqn{\widehat{\alpha}_k} as
+#' a diagnostic rather than as a result, and proceeds in three stages.
+#'
+#' \enumerate{
+#'   \item The model is fitted once with every \eqn{\alpha_k} free.
+#'   \item For each cause, \eqn{H_0\!: \alpha_k = 0} and
+#'   \eqn{H_0\!: \alpha_k = 1} are tested by Wald statistics at
+#'   \code{sig.level}. A cause for which neither hypothesis is rejected admits
+#'   both links; one for which exactly one is rejected admits the other.
+#'   \item The admissible combinations across causes are enumerated as
+#'   numbered \emph{model cases}, and the model is refitted at each of them
+#'   with the corresponding \eqn{\alpha_k} held fixed.
+#' }
+#'
+#' The case numbering is shown by \code{\link{print.pcrr}} and is the
+#' \code{case} argument of \code{\link{summary.pcrr}},
+#' \code{\link{predict.pcrr}}, \code{\link{cure.pcrr}},
+#' \code{\link{plot.pcrr}} and \code{\link{plot.predict.pcrr}}. The number of
+#' cases is the product of the number of links admitted by each cause, so it
+#' lies between 1 and \eqn{2^K}; the first cause varies fastest in the
+#' enumeration. There is no argument for specifying a link by hand, since a
+#' link outside the admissible set is one the data have rejected.
+#'
+#' If both hypotheses are rejected for some cause, or if neither can be
+#' tested because the standard error of \eqn{\widehat{\alpha}_k} is not
+#' finite, no interpretable case survives for that cause and hence none
+#' survives at all. \code{pcrr} then stops with an error naming the causes
+#' responsible, and no object is returned. Because all causes enter one
+#' likelihood, the offending cause cannot simply be dropped and the others
+#' reported.
+#'
+#' Model parameters are estimated by maximum likelihood using
+#' \code{\link[stats]{nlminb}}, with standard errors obtained from the inverse
+#' of the observed information matrix. The returned object is of class
+#' \code{"pcrr"} and supports the S3 methods \code{print()}, \code{summary()},
+#' \code{plot()}, \code{predict()}, and \code{cure()}.
 #'
 #' @seealso
 #' \code{\link{print.pcrr}}, 
@@ -104,10 +158,17 @@
 #' @param maxiter maximum number of optimization iterations. internally, \code{eval.max} is set to \code{3 * maxiter}.
 #' @param init a user-specified initial parameter vector.
 #'  See \code{\link{pcrr-parameter-order}} for the parameter ordering.
-#' @param variance logical value indicating whether the variance-covariance
-#'  matrix is computed. The default is \code{TRUE}. If \code{FALSE}, only the
-#'  maximum likelihood estimates and the score vector are computed.
-#' @param sig.level a significant level for model assumption test.
+#' @param variance logical value indicating whether variance estimates and
+#'  Wald tests are computed for the possible model assumption cases.
+#'  Variance estimation for the unconstrained GOR model is always performed
+#'  to conduct the PH and PO model assumption tests. If \code{TRUE}, the
+#'  inverse information matrix is additionally computed for each possible
+#'  model assumption case, allowing Wald inference for those models. If
+#'  \code{FALSE}, the optimization for each possible model assumption case
+#'  is still performed, but their variance estimates and Wald tests are not
+#'  computed. The default is \code{TRUE}.
+#' @param sig.level numeric value specifying the significance level used for
+#'  the model assumption tests. The default is \code{0.05}.
 #'
 #' @return
 #' An object of class \code{"pcrr"}, which is a list containing the following components:
@@ -122,6 +183,9 @@
 #' \item{\code{iter}}{number of iterations performed by the optimization algorithm.}
 #' \item{\code{message}}{message returned by the optimization routine.}
 #' \item{\code{call}}{matched function call.}
+#' \item{\code{x}}{The processed \code{ftime} vector containing the observed event or censoring times.}
+#' \item{\code{delta}}{The processed \code{fstatus} vector converted to a matrix of event indicators.}
+#' \item{\code{z}}{The processed \code{cov} matrix containing the covariate values.}
 #' \item{\code{n}}{total number of observations in the original data set.}
 #' \item{\code{n_missing}}{number of observations removed due to missing values.}
 #' \item{\code{k}}{number of event categories, excluding the censoring category.}
@@ -130,13 +194,15 @@
 #' \item{\code{cov_names}}{names of the covariates.}
 #' \item{\code{mapping}}{mapping between the original event labels and the internal event codes.}
 #' \item{\code{maxtime}}{maximum observed follow-up time.}
-#' \item{\code{fixed_alpha}}{alpha values specified through the \code{model} argument.}
-#' 
+#' \item{\code{case_all}}{the alpha values for all possible model assumption cases.}
+#' \item{\code{case_model}}{labels describing all possible model assumption cases.}
+#' \item{\code{mle_case_all}}{the results of \code{nlminb()} optimization for all possible model assumption cases.}
+#' \item{\code{sco_case_all}}{score vectors evaluated at the MLEs for all possible model assumption cases.}
+#' \item{\code{hess_case_all}}{hessian matrices evaluated at the MLEs for all possible model assumption cases.} 
 #' 
 #' @importFrom survival coxph Surv survfit
 #' @importFrom stats D model.matrix na.fail na.omit nlminb pnorm qnorm printCoefmat setNames uniroot approx
 #' @importFrom graphics lines legend abline axis par points
-#' @importFrom rlang .data
 #' @importFrom utils head
 #' 
 #' @examples
@@ -160,9 +226,11 @@
 #'
 #' fit1 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2))
 #' print(fit1)
-#' summary(fit1)
+#' fit1$case_model
+#' 
+#' summary(fit1, case = c(1, 3))
 #'
-#' pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)))
+#' pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = 1, event = 1)
 #' print(pred1)
 #' 
 #' plot(pred1)
@@ -605,7 +673,6 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
               cov_names = cov_names,
               mapping = mapping,
               maxtime = max(x),
-              signif = sig.level,
               case_all = case_all,
               case_model = case_model,
               mle_case_all = mle_case_all,
@@ -619,19 +686,23 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
 
 #' Print a Fitted Parametric Competing Risks Regression Model
 #'
-#' Prints the estimated regression coefficients from a fitted parametric
-#' competing risks regression model. When variance estimates are available,
-#' standard errors, Wald z-statistics, and two-sided p-values are also shown.
+#' Prints the convergence status and model assumption tests for a fitted
+#' parametric competing risks regression model. The model assumption tests
+#' are based on the estimated shape parameter \eqn{\alpha} from the
+#' generalized odds-rate (GOR) model, in which \eqn{\alpha} is estimated
+#' without imposing a fixed value.
 #'
-#' When variance estimates are available, the function additionally reports
-#' tests of the proportional hazards (PH) and proportional odds (PO)
-#' assumptions based on the shape parameter \eqn{\alpha}. The PH hypothesis
-#' corresponds to \eqn{H_0: \alpha = 0}, while the PO hypothesis corresponds
-#' to \eqn{H_0: \alpha = 1}.
+#' For each event, the function tests the proportional hazards (PH) and
+#' proportional odds (PO) model assumptions based on the estimated
+#' \eqn{\alpha}. The PH model corresponds to \eqn{H_0: \alpha = 0}, while
+#' the PO model corresponds to \eqn{H_0: \alpha = 1}. For each hypothesis,
+#' the estimated value of \eqn{\alpha}, its standard error, Wald z-statistic,
+#' and two-sided p-value are displayed.
 #'
-#' If an \eqn{\alpha} parameter was fixed at 0 or 1 when fitting the model,
-#' the corresponding test is not performed and the associated entries are
-#' displayed as \code{(Fixed)}.
+#' The function also displays all possible model assumption cases considered
+#' in the fitting procedure. Each case specifies whether the PH or PO model
+#' is assumed for each event.
+#'
 #'
 #' @param x an object of class \code{"pcrr"}, representing a fitted
 #'   parametric competing risks regression model.
@@ -644,7 +715,6 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
 #'
 #' @seealso
 #' \code{\link{pcrr}},
-#' \code{\link{plot.pcrr}},
 #' \code{\link{summary.pcrr}}
 #'
 #' @export
@@ -718,21 +788,7 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
                P.values = TRUE, cs.ind = 1:2, tst.ind = 3)
   
   cat("\n========================================\n")
-  
-  # signif_level <- x$signif
-  # mapping <- x$mapping
-  # for (k in 1:K) {
-  #   if (p_ph[k] <= signif_level && p_po[k] > signif_level) {
-  #     cat("At the ", signif_level, " significance level, the PH hypothesis is rejected, but the PO ",
-  #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
-  #   } else if (p_ph[k] > signif_level && p_po[k] <= signif_level) {
-  #     cat("At the ", signif_level, " significance level, the PO hypothesis is rejected, but the PH ",
-  #             "hypothesis is not rejected for event ", mapping[k], ".\n", sep = "")
-  #   } else if (p_ph[k] > signif_level && p_po[k] > signif_level) {
-  #     cat("At the ", signif_level, " significance level, neither the PH nor the PO hypothesis is ",
-  #             "rejected for event ", mapping[k], ".\n", sep = "")
-  #   }
-  # }
+
   
   cat("\nThe possible model cases are as follows :\n")
   for (i in seq_along(x$case_model)) {
@@ -1080,11 +1136,20 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #' Summarize a Fitted Parametric Competing Risks Regression Model
 #'
 #' Produces a summary of a fitted \code{"pcrr"} object, including
-#' regression coefficients, confidence intervals, baseline parameter
-#' estimates, and link function tests.
+#' regression coefficients, confidence intervals and baseline parameter
+#' estimates, separately for each selected model case.
 #'
 #' @details
-#' Four tables are produced.
+#' A \code{"pcrr"} object holds one fit per model case (see \code{\link{pcrr}}),
+#' and \code{summary} reports the tables below for each case selected by
+#' \code{case}, which defaults to all of them. Every component of the returned
+#' object is therefore a list indexed by the selected cases.
+#'
+#' Because \eqn{\alpha_k} is held fixed within a case, it is not an estimated
+#' parameter of these fits and does not appear in the tables. The assumption
+#' tests that chose the cases are reported by \code{\link{print.pcrr}}.
+#'
+#' Three tables are produced, with a fourth under \code{"gompertz3"}.
 #'
 #' \emph{Regression coefficients.} For each covariate and cause the estimate
 #' \eqn{\hat{\beta}}, its standard error, the Wald statistic
@@ -1107,16 +1172,14 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #' \eqn{\tau_k} are reported. For \code{distribution = "gompertz3"}, the
 #' additional shape parameter \eqn{\eta_k} is also reported. For
 #' \code{distribution = "logistic"}, the baseline parameters \eqn{b_k},
-#' \eqn{c_k}, and \eqn{p_k} are reported. The link parameter \eqn{\alpha_k} is
-#' also reported for all three distributions.
+#' \eqn{c_k}, and \eqn{p_k} are reported.
 #'
-#' \emph{Link function tests.} Two Wald tests are reported for each
-#' \eqn{\alpha_k}: \eqn{H_0\!: \alpha_k = 0}, under which the model reduces to a
-#' proportional hazards model, and \eqn{H_0\!: \alpha_k = 1}, under which it
-#' reduces to a proportional odds model. They are computed as
-#' \eqn{(\hat{\alpha}_k - 0)/\mathrm{se}(\hat{\alpha}_k)} and
-#' \eqn{(\hat{\alpha}_k - 1)/\mathrm{se}(\hat{\alpha}_k)}, and indicate whether a
-#' simpler, more interpretable link is compatible with the data.
+#' These parameters describe the shape of the fitted curve and are not
+#' themselves quantities of the fitted model in the sense their names suggest.
+#' In particular \eqn{\widehat{p}_k} under \code{"logistic"} is not the
+#' long-term event probability unless \eqn{\alpha_k = 0}; use
+#' \code{\link{cure.pcrr}} for that, and \code{\link{predict.pcrr}} for the
+#' hazard and its turning points.
 #'
 #' \emph{Baseline shape test.} For \code{distribution = "gompertz3"} an
 #' additional Wald test of \eqn{H_0: \eta_k = 0} is reported. Under this null the
@@ -1129,20 +1192,43 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #' @param case integer vector selecting the transformation-model cases to use,
 #'  numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
 #'  every available case is used.
-#' @param conf.level confidence level for confidence intervals. The default is \code{0.95}.
+#' @param conf.level confidence level for the confidence intervals. The
+#'  default is \code{0.95}. It affects the interval table only; the p-values in
+#'  the coefficient table always test \eqn{H_0\!: \beta = 0} and do not move
+#'  with it, so a 90\% interval excluding 1 alongside a p-value above 0.05 is
+#'  expected rather than contradictory.
 #' @param digits number of digits to print.
 #' @param ... further arguments passed to or from other methods.
 #'
 #' @return
-#' An object of class \code{"summary.pcrr"}, a list whose components include
-#' \code{coef} (regression coefficients), \code{conf_int} (confidence intervals
-#' on the exponentiated scale), \code{baseline} (the estimated link parameter
-#' \code{alpha} and distribution-specific baseline parameters: \code{rho} and
-#' \code{tau} for \code{"gompertz2"}, \code{rho}, \code{tau}, and \code{eta} for
-#' \code{"gompertz3"}, and \code{b}, \code{c}, and \code{p} for
-#' \code{"logistic"}), \code{link_ph} and \code{link_po} (link function tests),
-#' and \code{shape} (the \eqn{\eta = 0} test for \code{"gompertz3"}, and
-#' \code{NULL} for \code{"gompertz2"} and \code{"logistic"}).
+#' An object of class \code{"summary.pcrr"}. The following components are lists
+#' with one element per selected model case, named by the case labels:
+#' \describe{
+#'   \item{\code{coef}}{regression coefficients, with standard errors, Wald
+#'   statistics and p-values.}
+#'   \item{\code{conf_int}}{the same coefficients on the exponentiated scale
+#'   with confidence limits at \code{conf.level}.}
+#'   \item{\code{baseline}}{the distribution-specific baseline parameters:
+#'   \code{rho} and \code{tau} for \code{"gompertz2"}, \code{rho}, \code{tau}
+#'   and \code{eta} for \code{"gompertz3"}, and \code{b}, \code{c} and
+#'   \code{p} for \code{"logistic"}. \code{alpha} is fixed within a case and
+#'   is not included.}
+#'   \item{\code{shape}}{the \eqn{H_0\!: \eta_k = 0} test under
+#'   \code{"gompertz3"}; an empty list for the other baselines.}
+#'   \item{\code{inf}, \code{invinf}}{observed information matrix and its
+#'   inverse. A singular matrix is reported with a warning and filled with
+#'   \code{NA}.}
+#'   \item{\code{converged}, \code{message}, \code{loglik}, \code{iter}}{
+#'   convergence status, optimizer message, maximised log-likelihood and
+#'   iteration count of each case. \code{loglik} is \code{NaN} where the
+#'   objective terminated on its internal penalty, which is not a fit even
+#'   when \code{converged} is \code{TRUE}.}
+#' }
+#'
+#' The remaining components are scalar: \code{call}, \code{n},
+#' \code{n_missing}, \code{distribution}, \code{mapping}, \code{digits},
+#' \code{case} (the indices selected) and \code{case_model} (the labels of all
+#' available cases).
 #'
 #' @seealso
 #' \code{\link{pcrr}}, 
@@ -1482,7 +1568,6 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
  }
 
 
-
 #' Predict Cumulative Incidence Functions
 #'
 #' Computes predicted cumulative incidence functions and predicted 
@@ -1496,11 +1581,15 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #' \exp(\mathbf{z}^{\top}\widehat{\boldsymbol{\beta}}_k) \widehat{u}_k(t)
 #' \right]^{-1/\widehat{\alpha}_k}}
 #' where \eqn{\widehat{u}_k(t)} is the fitted cumulative
-#' baseline hazard corresponding to the selected distribution.
+#' baseline hazard corresponding to the selected distribution, and
+#' \eqn{\widehat{\alpha}_k} is the value at which the link was fixed in the
+#' model case being used, that is 0 under PH or 1 under PO.
 #'
-#' Predictions are obtained separately for each row of \code{cov},
-#' with one cumulative incidence curve returned for each covariate
-#' profile.
+#' Predictions are obtained separately for each row of \code{cov}, for each
+#' event selected by \code{event} and for each model case selected by
+#' \code{case}, with one cumulative incidence curve per combination. Both
+#' \code{case} and \code{event} default to everything available, so a bare
+#' call returns the full set and narrowing it is the deliberate act.
 #'
 #' The fitted subdistribution hazard is evaluated as
 #' \deqn{\lambda_k^{CI}(t;\mathbf{z}) = \frac{
@@ -1563,6 +1652,22 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #' These profile-specific maximum or minimum hazard times are obtained
 #' numerically by solving
 #' \eqn{\frac{d}{dt}\lambda_k^{CI}(t;\mathbf{z})=0.}
+#' The two coincide only as \eqn{\alpha_k \to 0}, where the derivative
+#' condition reduces to \eqn{u_k''(t)=0} and so does not involve the
+#' covariates: under PH the covariates scale the hazard and leave its peak
+#' where it is. The search is confined to the range of \code{times}, so a
+#' turning point beyond the last prediction time is not found, and a value
+#' sitting at the edge of the range should be read as a sign of that rather
+#' than as a peak.
+#'
+#' For \code{distribution = "gompertz2"} no turning point is reported.
+#' Substituting the two-parameter baseline into the derivative above leaves
+#' \eqn{\tau_k e^{\rho_k t}\{\rho_k -
+#' \alpha_k \exp(\mathbf{z}^{\top}\boldsymbol{\beta}_k)\tau_k\}}, whose sign
+#' does not depend on \eqn{t}: that subdistribution hazard is monotone for
+#' every covariate profile, increasing when
+#' \eqn{\rho_k > \alpha_k \exp(\mathbf{z}^{\top}\boldsymbol{\beta}_k)\tau_k}
+#' and decreasing otherwise.
 #'
 #' @param object object of class \code{"pcrr"}.
 #' @param cov numeric matrix of covariate values. Rows correspond to
@@ -1574,44 +1679,51 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #' @param case integer vector selecting the transformation-model cases to use,
 #'  numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
 #'  every available case is used.
-#' @param event integer code identifying the event type for prediction.
-#'  If omitted, the first event type (the event of interest) in the fitted model is used.
+#' @param event vector of event codes, as stored in \code{object$mapping},
+#'  identifying the event types for which predictions are computed. If
+#'  \code{NULL} (default), every event type in the fitted model is used. A code
+#'  that does not appear in \code{object$mapping} is an error.
 #' @param ... further arguments passed to or from other methods.
 #'
 #' @return
-#' An object of class \code{"predict.pcrr"}, containing:
-#' \item{pred}{matrix containing time points in the first column and
-#'  predicted cumulative incidence functions in subsequent columns.}
-#' \item{baseline_hazard}{matrix containing the baseline hazard evaluated
-#'  at the specified time points.}
-#' \item{subdistribution_hazard}{matrix containing predicted
-#'  subdistribution hazards for each covariate profile.}
-#' \item{xmh_base}{baseline maximum hazard time for the
-#'  \code{"gompertz3"} and \code{"logistic"} distribution when a maximum exists;
-#'  otherwise \code{NULL}.}
-#' \item{xmh_obs}{vector of covariate-specific maximum or minimum times of the
-#'  subdistribution hazard obtained numerically for
-#'  \code{"gompertz3"} and \code{"logistic"} models; otherwise \code{NULL}.}
-#' \item{t_boundary}{vector of covariate-specific time points at which
-#'  the GOR transformation becomes undefined, i.e.,
-#'  \eqn{1+\widehat{\alpha}_k\exp(\mathbf{z}^{\top}\boldsymbol{\widehat{\beta}}_k)
-#'  \widehat{u}_k(t)=0}. If this quantity remains positive for all
-#'  \eqn{t\geq0}, \code{Inf} is returned. These values define the
-#'  valid time domain for cumulative incidence function and
-#'  subdistribution hazard calculations.}
-#' \item{distribution}{the baseline distribution used in the fitted model.}
-#' \item{eta}{estimated shape parameter of the three-parameter
-#'  Gompertz distribution. This parameter influences the shape of the
-#'  baseline hazard function, including unimodal and U-shaped
-#'  patterns. Returned only for
-#'  \code{distribution = "gompertz3"}; otherwise \code{NULL}.}
-#' \item{labels}{labels corresponding to each covariate profile.}
-#' \item{event}{event type for which predictions were obtained.}
+#' An object of class \code{"predict.pcrr"}. The first six components are
+#' nested lists indexed first by selected model case, named by the case
+#' labels, and then by selected event:
+#' \describe{
+#'   \item{\code{pred}}{matrix with the time points in the first column and one
+#'   column of predicted cumulative incidence per covariate profile.}
+#'   \item{\code{baseline_hazard}}{matrix with the time points and the baseline
+#'   hazard, which carries no covariates.}
+#'   \item{\code{subdistribution_hazard}}{matrix with the time points and one
+#'   column of predicted subdistribution hazard per covariate profile. Beyond a
+#'   finite \code{t_boundary} the entries are \code{NA} rather than zero.}
+#'   \item{\code{xmh_base}}{turning point of the baseline hazard under
+#'   \code{"gompertz3"} and \code{"logistic"} when one exists at a positive
+#'   time, and \code{NULL} otherwise. It is always \code{NULL} under
+#'   \code{"gompertz2"}, whose baseline hazard is monotone.}
+#'   \item{\code{xmh_obs}}{named vector of profile-specific turning points of
+#'   the subdistribution hazard, found numerically; \code{NULL} where none
+#'   exists, and always \code{NULL} under \code{"gompertz2"}.}
+#'   \item{\code{t_boundary}}{named vector of the times at which
+#'   \eqn{1+\widehat{\alpha}_k\exp(\mathbf{z}^{\top}\boldsymbol{\widehat{\beta}}_k)
+#'   \widehat{u}_k(t)} reaches zero, and \code{Inf} where it does not. Since a
+#'   model case fixes \eqn{\alpha_k} at 0 or 1, that quantity is at least 1
+#'   throughout and these entries are \code{Inf}; a finite value can arise only
+#'   in the unconstrained fit.}
+#' }
+#'
+#' The remaining components are scalar: \code{distribution}, \code{eta} (the
+#' fitted \eqn{\eta_k}, nested in the same way, for \code{"gompertz3"} only and
+#' \code{NULL} otherwise), \code{labels} (the covariate profile labels),
+#' \code{case} (the indices selected), \code{case_model} (the labels of all
+#' available cases) and \code{event} (the event codes selected).
 #'
 #' @seealso
 #' \code{\link{pcrr}},
+#' \code{\link{print.pcrr}},
 #' \code{\link{print.predict.pcrr}},
-#' \code{\link{plot.predict.pcrr}}
+#' \code{\link{plot.predict.pcrr}},
+#' \code{\link{cure.pcrr}}
 #'
 #' @export
 predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, ...){
@@ -2527,6 +2639,13 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
 #'   }
 #' }
 #'
+#' The third state cannot occur in a fit obtained from \code{\link{pcrr}}.
+#' \eqn{A_k(t;\mathbf{z})} can decrease only when \eqn{\alpha_k < 0}, whereas
+#' every model case fixes \eqn{\alpha_k} at 0 or 1, so
+#' \eqn{A_k(t;\mathbf{z}) \geq 1} throughout and \code{t_boundary} is
+#' \code{Inf}. It is retained because it is a genuine state of the
+#' transformation model for negative \eqn{\alpha_k}.
+#'
 #'
 #' @param object a fitted model object.
 #' @param ... further arguments passed to or from methods.
@@ -2540,36 +2659,48 @@ cure <- function(object, ...) UseMethod("cure")
 
 #' @rdname cure
 #'
-#' @param cov numeric matrix of covariate values.
+#' @param cov numeric matrix of covariate values, one row per profile. A
+#'  vector is accepted and is reshaped row-wise when its length is a multiple
+#'  of the number of covariates.
 #' @param case integer vector selecting the transformation-model cases to use,
 #'  numbered as shown by \code{\link{print.pcrr}}. If \code{NULL} (default),
 #'  every available case is used.
-#' @param event event type for which the cure fraction is computed.
-#'  The default is the failure type of interest.
+#' @param event vector of event codes, as stored in \code{object$mapping}, for
+#'  which the cure fraction is computed. If \code{NULL} (default), every event
+#'  type in the fitted model is used. Reporting every cause is the sensible
+#'  default here, since all of them are estimated from the same likelihood.
 #'
 #' @return
-#' An object of class \code{"cure.pcrr"} containing the following components:
+#' An object of class \code{"cure.pcrr"}. The first three components are nested
+#' lists indexed first by selected model case, named by the case labels, and
+#' then by selected event:
 #' \describe{
-#'   \item{\code{cure}}{a numeric vector of estimated cure fractions, with one
-#'   entry per row of \code{cov}. the value is positive for \code{"cure"}
-#'   profiles, zero for \code{"no cure (asymptotic)"} profiles, and
-#'   \code{NA} for \code{"no cure (finite support)"} profiles.}
-#'   \item{\code{status}}{a character vector classifying each covariate profile
-#'   as \code{"cure"}, \code{"no cure (asymptotic)"}, or
-#'   \code{"no cure (finite support)"}.}
-#'   \item{\code{t_boundary}}{a numeric vector giving the time at which
-#'   \eqn{A_k(t; \mathbf{z})} reaches zero, if such a finite time exists, and
-#'   \code{Inf} otherwise. It is finite only for
+#'   \item{\code{cure}}{estimated cure fractions, one entry per row of
+#'   \code{cov}. Positive for \code{"cure"} profiles, zero for
+#'   \code{"no cure (asymptotic)"} profiles and \code{NA} for
 #'   \code{"no cure (finite support)"} profiles.}
+#'   \item{\code{status}}{the classification of each profile, as described
+#'   above.}
+#'   \item{\code{t_boundary}}{the time at which \eqn{A_k(t; \mathbf{z})}
+#'   reaches zero where such a finite time exists, and \code{Inf} otherwise.
+#'   In a fit from \code{\link{pcrr}} it is always \code{Inf}, for the reason
+#'   given above.}
 #' }
 #'
-#' For profiles classified as \code{"no cure (finite support)"}, the
-#' cumulative incidence function reaches the boundary of the GOR
-#' transformation domain, which is 1, at \code{t_boundary} and is undefined afterwards.
+#' The remaining components are \code{case} (the indices selected),
+#' \code{case_model} (the labels of all available cases) and \code{event} (the
+#' event codes selected).
+#'
+#' Because the estimate is a model-based extrapolation beyond the observed
+#' follow-up, it is a statement about the fitted distribution rather than an
+#' observed proportion. Where more than one model case survived, comparing the
+#' cure fractions across cases is informative: the cases differ most where the
+#' data run out, which is exactly where this quantity is read.
 #'
 #' @seealso
-#' \code{\link{pcrr}}
-#' \code{\link{print.cure.pcrr}}
+#' \code{\link{pcrr}},
+#' \code{\link{print.cure.pcrr}},
+#' \code{\link{predict.pcrr}}
 #'
 #' @export
 cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
@@ -2824,7 +2955,14 @@ print.cure.pcrr <- function(x, digits = 8, ...) {
 #' and \code{beta_k} denotes the regression coefficients for the covariates.
 #' The coefficients are ordered as \code{beta_k1, beta_k2, ..., beta_kP}
 #' and follow the column order of the input covariate matrix.
-#'
+#' 
+#' The blocks follow the internal cause order rather than the order in which
+#' the codes appear in the data: \code{failcode} occupies the first block and
+#' the remaining event codes follow in ascending order. This ordering is
+#' recorded in the \code{mapping} component of a fitted object, which is worth
+#' inspecting before writing an \code{init} vector by hand. The censoring code
+#' has no block.
+#' 
 #' \subsection{Gompertz2}{
 #'
 #' For \code{distribution = "gompertz2"}, the parameters of \eqn{u_k(t)}
