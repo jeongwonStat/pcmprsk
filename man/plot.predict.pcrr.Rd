@@ -11,10 +11,12 @@
   color = NULL,
   lty = NULL,
   ylim = NULL,
+  ylim.hazard = NULL,
   xmin = 0,
   xmax = NULL,
   xlab = "Time",
   ylab = "Cumulative Incidence",
+  ylab.hazard = "Subdistribution Hazard",
   legend = TRUE,
   legend.pos = "topleft",
   legend.title = NULL,
@@ -25,6 +27,8 @@
   max.marks = 4,
   xmh.lty = 3,
   xmh.col = "black",
+  mfrow = NULL,
+  common.ylim = FALSE,
   ask = NULL,
   ...
 )

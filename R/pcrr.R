@@ -202,7 +202,7 @@
 #' 
 #' @importFrom survival coxph Surv survfit
 #' @importFrom stats D model.matrix na.fail na.omit nlminb pnorm qnorm printCoefmat setNames uniroot approx
-#' @importFrom graphics lines legend abline axis par points
+#' @importFrom graphics lines legend abline axis par points mtext
 #' @importFrom utils head
 #' 
 #' @examples
@@ -2334,33 +2334,36 @@ print.predict.pcrr <- function(x, digits = 4, ...){
 #' @export
 plot.predict.pcrr <- function(x, case = NULL, event = NULL,
                               color = NULL, lty = NULL,
-                              ylim = NULL, xmin = 0, xmax = NULL,
-                              xlab = "Time", ylab = "Cumulative Incidence",
+                              ylim = NULL, ylim.hazard = NULL,
+                              xmin = 0, xmax = NULL,
+                              xlab = "Time",
+                              ylab = "Cumulative Incidence",
+                              ylab.hazard = "Subdistribution Hazard",
                               legend = TRUE, legend.pos = "topleft",
                               legend.title = NULL, lwd = 2, main = NULL,
                               hazard = TRUE, mark.xmh = TRUE, max.marks = 4,
                               xmh.lty = 3, xmh.col = "black",
+                              mfrow = NULL, common.ylim = FALSE,
                               ask = NULL, ...) {
   
-  # case selection
+  ## ------------------------------------------------------------------
+  ## 1. case selection : one page pair per case, never overlaid
+  ## ------------------------------------------------------------------
   avail_case <- x$case
   if (is.null(case)) {
-    ok <- if (is.null(x$converged)) rep(TRUE, length(avail_case))
-    else vapply(seq_along(avail_case), function(l) isTRUE(x$converged[[l]]), logical(1))
-    pick <- if (any(ok)) avail_case[ok] else avail_case
-    case <- pick[1]
-    if (length(avail_case) > 1)
-      message("Several model cases are available; showing case ", case,
-              " only.\nUse `case = ` to select or overlay cases :\n",
+    case <- avail_case
+    if (is.null(avail_case))
+      message("Use `case = ` to select cases :\n",
               paste(x$case_model[avail_case], collapse = "\n"))
   } else {
     if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
         any(case != floor(case)) || !all(case %in% avail_case))
       stop("`case` must be one or more of: ",
-           paste(avail_case, collapse = ", "), call. = FALSE)
+           paste(avail_case, collapse = ", "), "\n",
+           paste(x$case_model[avail_case], collapse = "\n"), call. = FALSE)
     case <- as.integer(unique(case))
   }
-  lpos   <- match(case, avail_case)   # position inside the stored lists
+  lpos   <- match(case, avail_case)      # position inside the stored lists
   n_case <- length(case)
   
   if (!is.null(x$converged)) {
@@ -2371,8 +2374,9 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
               paste(x$case_model[case[bad]], collapse = "\n"), call. = FALSE)
   }
   
-
-  # event selection
+  ## ------------------------------------------------------------------
+  ## 2. event selection : one panel each, inside every page
+  ## ------------------------------------------------------------------
   avail_event <- x$event
   if (is.null(event)) {
     event <- avail_event
@@ -2385,8 +2389,9 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
   epos    <- match(event, avail_event)
   n_event <- length(event)
   
-
-  # curves, colors and line types
+  ## ------------------------------------------------------------------
+  ## 3. curves, colours and line types
+  ## ------------------------------------------------------------------
   labs   <- x$labels
   ncurve <- length(labs)
   if (is.null(labs) || ncurve == 0) {
@@ -2396,39 +2401,60 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
   
   if (is.null(color)) color <- seq_len(ncurve) + 1
   color <- rep(color, length.out = ncurve)
-  if (is.null(lty))   lty <- seq_len(n_case)
-  lty   <- rep(lty, length.out = n_case)
+  if (is.null(lty))   lty <- 1
+  lty   <- rep(lty, length.out = ncurve)
   
-  if (is.null(xmax)) {
-    xmax <- max(x$pred[[lpos[1]]][[epos[1]]][, 1], na.rm = TRUE)
-  }
+  if (is.null(xmax))
+    xmax <- suppressWarnings(max(vapply(lpos, function(l)
+      max(x$pred[[l]][[epos[1]]][, 1], na.rm = TRUE), numeric(1))))
+  if (!is.finite(xmax) || xmax <= xmin) xmax <- xmin + 1
   
-  # simplify the annotation when crowded
-  total_curve <- n_case * ncurve
-  crowded     <- total_curve > max.marks
+  ## simplify the annotation when the panel is crowded
+  crowded     <- ncurve > max.marks
   show_lines  <- isTRUE(mark.xmh) && !crowded
-  show_values <- isTRUE(mark.xmh) && !crowded && n_case == 1
+  show_values <- isTRUE(mark.xmh) && !crowded
   
   show_haz <- isTRUE(hazard) && !is.null(x$subdistribution_hazard)
   
-
-  # device set-up
-  user_split <- !identical(as.integer(par("mfrow")), c(1L, 1L))
+  ## ------------------------------------------------------------------
+  ## 4. panel grid : K events on one page
+  ## ------------------------------------------------------------------
+  grid_dim <- function(n) {
+    nr <- max(1L, as.integer(floor(sqrt(n))))
+    c(nr, as.integer(ceiling(n / nr)))
+  }
   
-  if (is.null(ask))
-    ask <- (n_event > 1) && !user_split && dev.interactive()
+  user_split <- !identical(as.integer(par("mfrow")), c(1L, 1L))
+  if (is.null(mfrow)) {
+    auto_layout <- !user_split
+    dims <- if (user_split) as.integer(par("mfrow")) else grid_dim(n_event)
+  } else {
+    if (!is.numeric(mfrow) || length(mfrow) != 2 || any(!is.finite(mfrow)) ||
+        any(mfrow < 1))
+      stop("`mfrow` must be a numeric vector of length 2, e.g. c(1, 2).",
+           call. = FALSE)
+    auto_layout <- TRUE
+    dims <- as.integer(mfrow)
+  }
+  per_page <- dims[1] * dims[2]
+  
+  ## ------------------------------------------------------------------
+  ## 5. device set-up
+  ## ------------------------------------------------------------------
+  n_quant <- 1L + isTRUE(show_haz)
+  n_page  <- n_case * n_quant * ceiling(n_event / per_page)
+  
+  op <- par(no.readonly = TRUE)
+  on.exit(par(op), add = TRUE)
+  
+  if (is.null(ask)) ask <- (n_page > 1) && dev.interactive()
   if (isTRUE(ask)) {
     oask <- devAskNewPage(TRUE)
     on.exit(devAskNewPage(oask), add = TRUE)
   }
-  # only split the device when the user has not already done so
-  if (show_haz && !user_split) {
-    op <- par(mfrow = c(1, 2))
-    on.exit(par(op), add = TRUE)
-  }
   
   ## ------------------------------------------------------------------
-  ## small helpers
+  ## 6. small helpers
   ## ------------------------------------------------------------------
   ## largest finite value of the curve columns, NA-safe
   col_max <- function(m) {
@@ -2443,27 +2469,18 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
     approx(tt[ok], yy[ok], xout = xout)$y
   }
   ## is this turning point drawable?
-  usable <- function(v) is.finite(v) && v >= xmin && v <= xmax
+  usable <- function(v) length(v) == 1L && is.finite(v) && v >= xmin && v <= xmax
   
-  ## legend contents; with one case the profiles carry the line type,
-  ## with several the legend is split into profiles and cases
+  ## legend of a single panel : the profiles, then the baseline marker
   make_legend <- function(mk, base_v) {
-    if (n_case == 1) {
-      lg <- labs
-      if (show_values && !is.null(mk) && any(is.finite(mk)))
-        lg <- ifelse(is.finite(mk), sprintf("%s   x_mh = %.2f", labs, mk), labs)
-      out <- list(legend = lg, col = color,
-                  lty = rep(lty[1], ncurve), lwd = rep(lwd, ncurve))
-    } else {
-      out <- list(legend = c(labs, paste("case", case)),
-                  col = c(color, rep(xmh.col, n_case)),
-                  lty = c(rep(1, ncurve), lty),
-                  lwd = c(rep(lwd, ncurve), rep(lwd, n_case)))
-    }
-    bv <- base_v[is.finite(base_v)]
-    if (isTRUE(mark.xmh) && length(bv) > 0) {
-      lab_b <- if (!crowded && length(bv) == 1)
-        sprintf("baseline x_mh = %.2f", bv[1]) else "baseline x_mh"
+    lg <- labs
+    if (show_values && !is.null(mk) && any(is.finite(mk)))
+      lg <- ifelse(is.finite(mk), sprintf("%s   x_mh = %.2f", labs, mk), labs)
+    out <- list(legend = lg, col = color, lty = lty, lwd = rep(lwd, ncurve))
+    
+    if (isTRUE(mark.xmh) && usable(base_v)) {
+      lab_b <- if (!crowded) sprintf("baseline x_mh = %.2f", base_v)
+      else "baseline x_mh"
       out$legend <- c(out$legend, lab_b)
       out$col    <- c(out$col, xmh.col)
       out$lty    <- c(out$lty, xmh.lty)
@@ -2472,89 +2489,110 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
     out
   }
   
-  # draw one panel (cumulative incidence or subdistribution hazard)
-  draw_panel <- function(mats, mk_l, base_v, ylim_p, ylab_p, main_p) {
+  ## the case label, and the quantity beside it, in the outer margin
+  page_header <- function(t1, t2) {
+    cx <- par("cex")
+    if (!is.finite(cx) || cx <= 0) cx <- 1
+    mtext(t1, side = 3, outer = TRUE, line = 1.50 / cx,
+          font = 2, cex = 1.15 / cx)
+    if (!is.null(t2) && nzchar(t2))
+      mtext(t2, side = 3, outer = TRUE, line = 0.35 / cx, cex = 0.95 / cx)
+  }
+  
+  ## one panel : one event of one case, one quantity
+  draw_panel <- function(mat, mk, base_v, ylim_p, ylab_p, main_p) {
     plot(c(xmin, xmax), ylim_p, type = "n",
          xlab = xlab, ylab = ylab_p, main = main_p, ...)
     
-    # baseline turning point(s)
-    if (isTRUE(mark.xmh))
-      for (v in unique(base_v[is.finite(base_v)]))
-        if (usable(v)) abline(v = v, lty = xmh.lty, col = xmh.col, lwd = 1.6)
+    ## baseline turning point
+    if (isTRUE(mark.xmh) && usable(base_v))
+      abline(v = base_v, lty = xmh.lty, col = xmh.col, lwd = 1.6)
     
-    # profile-specific vertical reference lines
-    if (show_lines)
-      for (ci in seq_len(n_case)) {
-        mk <- mk_l[[ci]]
-        if (is.null(mk)) next
-        for (j in seq_len(ncurve))
-          if (usable(mk[j])) abline(v = mk[j], lty = xmh.lty, col = color[j])
-      }
-    
-    # the curves themselves
-    for (ci in seq_len(n_case)) {
-      m <- mats[[ci]]
+    ## profile-specific vertical reference lines
+    if (show_lines && !is.null(mk))
       for (j in seq_len(ncurve))
-        lines(m[, 1], m[, j + 1], lty = lty[ci], col = color[j], lwd = lwd)
-    }
+        if (usable(mk[j])) abline(v = mk[j], lty = xmh.lty, col = color[j])
     
-    # turning points marked on the curves (kept even when crowded)
-    if (isTRUE(mark.xmh))
-      for (ci in seq_len(n_case)) {
-        mk <- mk_l[[ci]]
-        if (is.null(mk)) next
-        m <- mats[[ci]]
-        for (j in seq_len(ncurve)) {
-          if (!usable(mk[j])) next
-          yy <- curve_y(m[, 1], m[, j + 1], mk[j])
-          if (is.finite(yy))
-            points(mk[j], yy, pch = 19, col = color[j], cex = 0.9)
-        }
+    ## the curves themselves
+    for (j in seq_len(ncurve))
+      lines(mat[, 1], mat[, j + 1], lty = lty[j], col = color[j], lwd = lwd)
+    
+    ## turning points marked on the curves (kept even when crowded)
+    if (isTRUE(mark.xmh) && !is.null(mk))
+      for (j in seq_len(ncurve)) {
+        if (!usable(mk[j])) next
+        yy <- curve_y(mat[, 1], mat[, j + 1], mk[j])
+        if (is.finite(yy))
+          points(mk[j], yy, pch = 19, col = color[j], cex = 0.9)
       }
     
     if (isTRUE(legend)) {
-      lg <- make_legend(if (n_case == 1) mk_l[[1]] else NULL, base_v)
+      lg <- make_legend(mk, base_v)
       legend(legend.pos, legend = lg$legend, lty = lg$lty, col = lg$col,
              lwd = lg$lwd, title = legend.title, bty = "n")
     }
   }
-
-  # one page per event
-  for (ei in seq_len(n_event)) {
-    e  <- epos[ei]
-    ev <- event[ei]
+  
+  ## one page : every selected event of one case, for one quantity
+  draw_page <- function(l, page_title, kind) {
     
-    main_p <- if (is.null(main)) paste("Event", ev)
-    else rep(main, length.out = n_event)[ei]
+    ## re-setting mfrow rewinds the panel counter, so the page below
+    ## always starts on a fresh device page
+    par(mfrow = dims)
+    cx <- par("cex")
+    if (!is.finite(cx) || cx <= 0) cx <- 1
+    par(oma = c(0, 0, 3.4 / cx, 0))
+    if (auto_layout) par(mar = c(4.1, 4.1, 2.6, 1.6))
     
-    # turning points of every selected case for this event
-    mk_l <- lapply(lpos, function(l)
-      if (isTRUE(mark.xmh)) x$xmh_obs[[l]][[e]] else NULL)
-    base_v <- vapply(lpos, function(l) {
-      v <- if (isTRUE(mark.xmh)) x$xmh_base[[l]][[e]] else NA_real_
-      if (is.null(v) || length(v) == 0) NA_real_ else as.numeric(v)[1]
-    }, numeric(1))
+    is_cif  <- identical(kind, "cif")
+    quant   <- if (is_cif) ylab else ylab.hazard
+    mats    <- lapply(epos, function(e)
+      if (is_cif) x$pred[[l]][[e]] else x$subdistribution_hazard[[l]][[e]])
     
-    # subdistribution hazard
-    if (show_haz) {
-      hz_l <- lapply(lpos, function(l) x$subdistribution_hazard[[l]][[e]])
-      hmax <- suppressWarnings(max(vapply(hz_l, col_max, numeric(1)),
-                                   na.rm = TRUE))
-      if (!is.finite(hmax) || hmax <= 0) hmax <- 1
-      draw_panel(hz_l, mk_l, base_v, c(0, hmax * 1.05),
-                 "Subdistribution Hazard", main_p)
+    ## y limits : fixed by the user, shared by the page, or per panel
+    fixed <- if (is_cif) ylim else ylim.hazard
+    pad   <- if (is_cif) 1 else 1.05
+    top   <- function(m) {
+      v <- col_max(m)
+      if (!is.finite(v) || v <= 0) v <- 1
+      c(0, v * pad)
     }
-    
-    # cumulative incidence
-    cif_l <- lapply(lpos, function(l) x$pred[[l]][[e]])
-    if (is.null(ylim)) {
-      cmax <- suppressWarnings(max(vapply(cif_l, col_max, numeric(1)), na.rm = TRUE))
-      if (!is.finite(cmax) || cmax <= 0) cmax <- 1
-      ylim_p <- c(0, cmax)
+    if (!is.null(fixed)) {
+      ylims <- rep(list(fixed), n_event)
+    } else if (isTRUE(common.ylim)) {
+      v <- suppressWarnings(max(vapply(mats, col_max, numeric(1)), na.rm = TRUE))
+      if (!is.finite(v) || v <= 0) v <- 1
+      ylims <- rep(list(c(0, v * pad)), n_event)
     } else {
-      ylim_p <- ylim
+      ylims <- lapply(mats, top)
     }
-    draw_panel(cif_l, mk_l, base_v, ylim_p, ylab, main_p)
+    
+    for (ei in seq_len(n_event)) {
+      e  <- epos[ei]
+      ev <- event[ei]
+      
+      mk <- if (isTRUE(mark.xmh)) x$xmh_obs[[l]][[e]] else NULL
+      bv <- if (isTRUE(mark.xmh)) x$xmh_base[[l]][[e]] else NA_real_
+      bv <- if (is.null(bv) || length(bv) == 0) NA_real_ else as.numeric(bv)[1]
+      
+      draw_panel(mats[[ei]], mk, bv, ylims[[ei]], quant, paste("event", ev))
+      
+      ## the header belongs to the device page, so it is redrawn
+      ## whenever the panels spill over onto another one
+      if ((ei - 1L) %% per_page == 0L) page_header(page_title, quant)
+    }
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 7. (case, cumulative incidence) then (case, subdistribution hazard)
+  ## ------------------------------------------------------------------
+  for (ci in seq_len(n_case)) {
+    l   <- lpos[ci]
+    ttl <- if (is.null(main)) x$case_model[case[ci]]
+    else rep(main, length.out = n_case)[ci]
+    
+    draw_page(l, ttl, "cif")
+    if (show_haz) draw_page(l, ttl, "hazard")
   }
   
   invisible(x)
