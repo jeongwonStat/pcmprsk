@@ -3176,7 +3176,7 @@ NULL
   # symbol name : delta1, delta2, ...
   # symbol name : z1, z2, ...
   
-  tol <- 1e-3
+  tol <- 1e-4
   # Make Expression Text
   txt_zb <- character(K)
   txt_u <- character(K)
@@ -3191,8 +3191,8 @@ NULL
       }
     }
     
-    if (abs(theta_mle[(k - 1) * (3 + P) + 2]) < tol) {
-      txt_rho_term_sequence <- paste0("(x + rho", k, " * x^2 / 2 + rho", k, "^2 * x^3 / 6)")
+    if (abs(theta_mle[(k - 1) * (3 + P) + 2] * max(x)) < tol) {
+      txt_rho_term_sequence <- paste0("(x + rho", k, " * x^2 / 2 + rho", k, "^2 * x^3 / 6 + rho", k, "^3 * x^4 / 24)")
       txt_u[k] <- paste0("(tau", k, " * ", txt_rho_term_sequence, ")")
     } else {
       txt_u[k] <- paste0("(tau", k, " * expm1(rho", k, " * x) / rho", k, ")")
@@ -3207,7 +3207,9 @@ NULL
     if (is.null(fixed_alpha)){
       if (abs(theta_mle[(k - 1) * (3 + P) + 1]) < tol) {
         txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
-        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2",
+                                          " + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3",
+                                          " - alpha", k, "^3 * ", txt_ezb_u, "^3 / 4)")
         txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
         txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
       } else {
@@ -3591,7 +3593,7 @@ NULL
   # symbol name : delta1, delta2, ...
   # symbol name : z1, z2, ...
   
-  tol <- 1e-3
+  tol <- 1e-4
   # Make Expression Text
   txt_zb <- character(K)
   txt_u <- character(K)
@@ -3606,17 +3608,20 @@ NULL
       }
     }
     
-    if (abs(theta_mle[(k - 1) * (4 + P) + 2]) < tol && abs(theta_mle[(k - 1) * (4 + P) + 4]) < tol) {
-      txt_rho_eta_term_sequence <- paste0("(x + eta", k, " * x + eta", k, "^2 * x / 2 + rho", k, " * x^2 / 2 + rho", k, " * eta", k, " * x^2 + rho", k, "^2 * x^3 / 6)")
-      txt_u[k] <- paste0("(tau", k, " * ", txt_rho_eta_term_sequence, ")")
-    } else if (abs(theta_mle[(k - 1) * (4 + P) + 2]) < tol) {
-      txt_rho_term_sequence <- paste0("(x + (1 + eta", k, ") * rho", k ," * x^2 / 2 + (1 + 3 * eta", k,
-                                      " + eta", k,"^2) * rho", k, "^2 * x^3 / 6)")
+    
+    if (abs(theta_mle[(k - 1) * (4 + P) + 2] * max(x)) < tol) {
+      txt_rho_term_sequence <- paste0("(x",
+                                      " + (1 + eta", k, ") * rho", k, " * x^2 / 2",
+                                      " + (1 + 3 * eta", k, " + eta", k, "^2) * rho", k, "^2 * x^3 / 6",
+                                      " + (1 + 7 * eta", k, " + 6 * eta", k, "^2 + eta", k, "^3) * rho", k, "^3 * x^4 / 24)")
       txt_u[k] <- paste0("(tau", k, " * exp(eta", k, ") * ", txt_rho_term_sequence, ")")
-    } else if (abs(theta_mle[(k - 1) * (4 + P) + 4]) < tol) {
-      txt_eta_term_sequence <- paste0("(expm1(rho", k ," * x) + eta", k, " * expm1(2 * rho", k,
-                                      " * x) / 2 + eta", k, "^2 * expm1(3 * rho", k ," * x) / 6)")
-      txt_u[k] <- paste0("(tau", k, " / rho", k, " * ", txt_eta_term_sequence, ")")
+    } else if (abs(theta_mle[(k - 1) * (4 + P) + 4] * expm1(theta_mle[(k - 1) * (4 + P) + 2] * max(x))) < tol) {
+      txt_A <- paste0("expm1(rho", k, " * x)")
+      txt_eta_term_sequence <- paste0("(", txt_A,
+                                      " + eta", k, " * ", txt_A, "^2 / 2",
+                                      " + eta", k, "^2 * ", txt_A, "^3 / 6",
+                                      " + eta", k, "^3 * ", txt_A, "^4 / 24)")
+      txt_u[k] <- paste0("(tau", k, " * exp(eta", k, ") / rho", k, " * ", txt_eta_term_sequence, ")")
     } else {
       txt_u[k] <- paste0("(tau", k, " * exp(eta", k, ") * expm1(eta", k, " * expm1(rho", k, " * x)) / (rho", k, " * eta", k, "))")
     }
@@ -3630,11 +3635,14 @@ NULL
     if (is.null(fixed_alpha)){
       if (abs(theta_mle[(k - 1) * (4 + P) + 1]) < tol) {
         txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
-        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        # txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2",
+                                          " + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3",
+                                          " - alpha", k, "^3 * ", txt_ezb_u, "^3 / 4)")
         txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
         txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
       } else {
-        txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")")
+        txt_log_term[k] <- paste0("- (1 / alpha", k, " + 1) * ", "log1p(alpha", k, " * exp", txt_zb[k], " * ", txt_u[k], ")")
         txt_F[k] <- paste0("1 - (1 + alpha", k, " * exp(", txt_zb[k], ") * ", txt_u[k], ")^(-1 / alpha", k, ")")
       }
     } else {
@@ -3922,7 +3930,7 @@ NULL
   # symbol name : delta1, delta2, ...
   # symbol name : z1, z2, ...
   
-  tol <- 1e-3
+  tol <- 1e-4
   # Make Expression Text
   txt_zb <- character(K)
   txt_u <- character(K)
@@ -3946,7 +3954,10 @@ NULL
     if (is.null(fixed_alpha)) {
       if (abs(theta_mle[(k - 1) * (4 + P) + 1]) < tol) {
         txt_ezb_u <- paste0("(exp", txt_zb[k], " * ", txt_u[k], ")")
-        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        # txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2 + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3)")
+        txt_alpha_term_sequence <- paste0("(1 - alpha", k, " * ", txt_ezb_u, " / 2",
+                                          " + alpha", k, "^2 * ", txt_ezb_u, "^2 / 3",
+                                          " - alpha", k, "^3 * ", txt_ezb_u, "^3 / 4)")
         txt_log_term[k] <- paste0("- (1 + alpha", k, ") * ", txt_ezb_u, " * ", txt_alpha_term_sequence)
         txt_F[k] <- paste0("1 - exp(-", txt_ezb_u, " * ", txt_alpha_term_sequence, ")")
       } else {
