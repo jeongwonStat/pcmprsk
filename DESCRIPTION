@@ -13,12 +13,14 @@ Description: Fits parametric regression models for the cumulative
 Depends: R (>= 4.0.0)
 License: GPL-3
 Encoding: UTF-8
-LazyData: true
 Imports:
+    cmprsk,
+    grDevices,
     graphics,
     stats,
     survival,
-    rlang
+    timereg,
+    utils
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 8.0.0
 URL: https://github.com/jeongwonStat/pcmprsk

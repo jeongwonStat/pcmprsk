@@ -37,54 +37,66 @@
 \item{x}{object of class \code{"predict.pcrr"}.}
 
 \item{case}{integer vector of model cases to draw, using the case numbers
-stored in \code{x$case}. If \code{NULL} (default) the first available case
-is used and a message is issued when more than one is available. Several
-cases are overlaid and distinguished by line type.}
+stored in \code{x$case}. Cases are drawn in the order given, each on its
+own pages, and duplicates are dropped. If \code{NULL} (default) every
+stored case is drawn.}
 
 \item{event}{vector of event types to draw, using the codes stored in
-\code{x$event}. If \code{NULL} (default) every stored event is drawn, one
-page per event.}
+\code{x$event}, one panel per event in the order given. If \code{NULL}
+(default) every stored event is drawn.}
 
-\item{color}{line colors for the covariate profiles. Recycled to the number
-of profiles. Defaults to \code{seq_len(ncurve) + 1}.}
+\item{color}{line colors for the covariate profiles, recycled to the number
+of profiles. Defaults to \code{seq_len(ncurve) + 1}, where \code{ncurve} is
+the number of profiles. The profiles are labelled by \code{x$labels}, or
+\code{"obs 1"}, \code{"obs 2"}, \dots when these are absent.}
 
-\item{lty}{line types for the model cases. Recycled to the number of
-selected cases. Defaults to \code{seq_len(n_case)}.}
+\item{lty}{line types for the covariate profiles, recycled to the number of
+profiles. Defaults to 1 for every profile.}
 
-\item{ylim}{limits for the y-axis of the cumulative incidence panel. If
-\code{NULL}, limits are computed per event from the drawn curves.}
+\item{ylim, ylim.hazard}{y-axis limits of the cumulative incidence panels and
+of the subdistribution hazard panels respectively, applied to every panel
+of that page. If \code{NULL} (default) each panel runs from 0 to the
+largest value of its curves over all prediction times, or to 1.05 times
+that value on the hazard page; see also \code{common.ylim}.}
 
-\item{xmin}{minimum value of the x-axis.}
-
-\item{xmax}{maximum value of the x-axis. If \code{NULL}, the largest
-prediction time is used.}
+\item{xmin, xmax}{range of the x-axis, shared by every panel on both pages.
+If \code{xmax} is \code{NULL} (default), the largest prediction time of the
+selected cases is used. An \code{xmax} that is not larger than \code{xmin}
+is replaced by \code{xmin + 1}.}
 
 \item{xlab}{label for the x-axis.}
 
-\item{ylab}{label for the y-axis of the cumulative incidence panel.}
+\item{ylab, ylab.hazard}{y-axis labels of the cumulative incidence panels and
+of the subdistribution hazard panels; each also appears in the header of
+its page.}
 
-\item{legend}{logical value indicating whether a legend is drawn.}
+\item{legend}{logical value indicating whether a legend is drawn on each
+panel.}
 
-\item{legend.pos}{position of the legend, passed to
+\item{legend.pos}{position of the legend on both pages, passed to
 \code{\link[graphics]{legend}}. The default is \code{"topleft"}.}
 
 \item{legend.title}{optional title for the legend.}
 
 \item{lwd}{line width for the curves.}
 
-\item{main}{main title. If \code{NULL}, the event being plotted is used.
-A vector is recycled over the selected events.}
+\item{main}{title(s) replacing the case label in the page headers, recycled
+over the selected cases so that each element titles one case's pages. If
+\code{NULL} (default) the case label is used. Panel titles, which name the
+event, are not affected.}
 
-\item{hazard}{logical value. If \code{TRUE} (default), the subdistribution
-hazard is drawn in a left-hand panel next to the cumulative incidence.}
+\item{hazard}{logical value. If \code{TRUE} (default) and \code{x} stores
+subdistribution hazards, each case's cumulative incidence page is followed
+by a page of subdistribution hazards; otherwise only the cumulative
+incidence is drawn.}
 
-\item{mark.xmh}{logical value. If \code{TRUE} (default), profile-specific
-hazard turning points (\code{xmh_obs}) and the baseline turning point
-(\code{xmh_base}) are marked when they exist.}
+\item{mark.xmh}{logical value. If \code{TRUE} (default), the profile-specific
+hazard turning points (\code{x$xmh_obs}) and the baseline turning point
+(\code{x$xmh_base}) are marked when they exist; see Details.}
 
-\item{max.marks}{maximum number of drawn curves for which vertical reference
-lines and numeric legend entries are kept. Above this threshold the
-annotation is simplified. Default is 4.}
+\item{max.marks}{maximum number of covariate profiles for which the
+profile-specific vertical lines and the numeric legend entries are kept.
+Above this threshold the annotation is simplified. Default is 4.}
 
 \item{xmh.lty}{line type for the vertical reference lines at the hazard
 turning points. Default is 3 (dotted).}
@@ -93,42 +105,64 @@ turning points. Default is 3 (dotted).}
 \code{"black"}, so that the covariate-free baseline turning point stands out
 from the profile-specific lines, which follow the color of their own curve.}
 
+\item{mfrow}{panel grid of a page as \code{c(rows, columns)}. If \code{NULL}
+(default), a grid already set with \code{par(mfrow = )} is used together
+with the current margins; failing that, the grid has \code{floor(sqrt(n))}
+rows and enough columns for the \code{n} selected events.}
+
+\item{common.ylim}{logical value. If \code{TRUE}, all panels of a page share
+one y-axis range instead of being scaled separately. Ignored where
+\code{ylim} or \code{ylim.hazard} fixes the range. Default \code{FALSE}.}
+
 \item{ask}{logical value. If \code{TRUE}, the user is prompted before each
-new page. If \code{NULL} (default), prompting is enabled only when several
-events are drawn on an interactive single-panel device, so that a device set
-up by the user with \code{\link[graphics]{par}(mfrow)} is left untouched.}
+new page. If \code{NULL} (default), prompting is enabled when more than one
+page is drawn on an interactive device (see
+\code{\link[grDevices]{dev.interactive}}).}
 
 \item{...}{additional graphical parameters passed to
-\code{\link[graphics]{plot}}.}
+\code{\link[graphics]{plot.default}} when each panel is set up; they do not
+reach the curves or the legends.}
 }
 \value{
 Produces the plots and returns the input object invisibly.
 }
 \description{
-Plots cumulative incidence functions and subdistribution hazards produced by
-\code{\link{predict.pcrr}}.
+Plots the cumulative incidence functions and subdistribution hazards
+produced by \code{\link{predict.pcrr}}. For each selected model case a page
+of cumulative incidence panels is drawn, followed, when the hazards are
+available, by a page of subdistribution hazard panels. Each page has one
+panel per selected event and each panel one curve per covariate profile.
 }
 \details{
-A \code{"predict.pcrr"} object may hold several transformation-model cases and
-several event types. They are displayed differently, because they mean
-different things.
+A \code{"predict.pcrr"} object may hold several transformation-model cases,
+several event types and several covariate profiles, and each has its own
+place in the display. \emph{Cases} are never overlaid: the selected cases
+are drawn in turn, each case's cumulative incidence page followed by its
+subdistribution hazard page (see \code{hazard}). \emph{Events} are the
+panels of a page, each titled by its event code. \emph{Covariate profiles}
+are the curves within a panel, distinguished by \code{color} (and, if
+supplied, \code{lty}), so that a shared color means a shared profile across
+panels and pages.
 
-\emph{Events} are distinct causes of failure, so they are never overlaid.
-One page is drawn per event. When more than one event is plotted on a
-single-panel device, the pages are shown one at a time in the manner of
-\code{\link[stats]{plot.lm}}; see \code{ask}.
+Each page carries a header giving the case label (or \code{main}) and,
+beneath it, the quantity shown (\code{ylab} or \code{ylab.hazard}). If the
+events do not fit the grid (see \code{mfrow}) the page continues on further
+pages, each with the header repeated. Graphical parameters are restored on
+exit. A case whose optimization did not converge is still drawn, with a
+warning that its curves should not be interpreted.
 
-\emph{Cases} are the same data fitted under different PH/PO assumptions, so
-overlaying them is informative. By default only the first available case is
-drawn, with a message; specifying \code{case} explicitly overlays the
-requested cases in one set of panels. Covariate profiles are distinguished by
-\emph{color} and cases by \emph{line type}, so that a shared color means a
-shared covariate profile and the line type shows the modelling assumption.
+With \code{mark.xmh = TRUE} the turning points of the subdistribution hazard
+are marked on both pages: each profile's turning point by a filled point on
+its curve and a vertical line in its color, and the baseline turning point
+by a vertical line in \code{xmh.col}. Turning points that are missing or lie
+outside the range from \code{xmin} to \code{xmax} are not drawn. The legend
+gives each profile's turning point and, when it is drawn, the baseline one.
 
-When the number of drawn curves exceeds \code{max.marks} the annotation is
-simplified automatically: the vertical reference lines at the hazard turning
-points are dropped (the points on the curves are kept) and the numeric
-\eqn{x_{mh}} values are removed from the legend.
+When the number of covariate profiles exceeds \code{max.marks} the
+annotation is simplified automatically: the profile-specific vertical lines
+are dropped (the points on the curves are kept) and the numeric
+\eqn{x_{mh}} values are removed from the legend. The baseline line stays,
+labelled without its value.
 }
 \seealso{
 \code{\link{pcrr}},

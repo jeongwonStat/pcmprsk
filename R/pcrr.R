@@ -200,9 +200,12 @@
 #' \item{\code{sco_case_all}}{score vectors evaluated at the MLEs for all possible model assumption cases.}
 #' \item{\code{hess_case_all}}{hessian matrices evaluated at the MLEs for all possible model assumption cases.} 
 #' 
+#' @importFrom cmprsk crr
+#' @importFrom timereg prop.odds.subdist Event
 #' @importFrom survival coxph Surv survfit
-#' @importFrom stats D model.matrix na.fail na.omit nlminb pnorm qnorm printCoefmat setNames uniroot approx
-#' @importFrom graphics lines legend abline axis par points mtext
+#' @importFrom stats D model.matrix na.fail na.omit nlminb pnorm qnorm printCoefmat setNames uniroot approx as.formula
+#' @importFrom graphics abline box legend lines mtext par plot.new points rect title
+#' @importFrom grDevices dev.interactive devAskNewPage
 #' @importFrom utils head
 #' 
 #' @examples
@@ -800,120 +803,257 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
   invisible(x)
 }
 
-#' Diagnostic Plots for a Fitted Parametric Competing Risks Regression Model
+#' Diagnostic Plots for a Parametric Competing Risks Regression Model
 #'
-#' Draws Cox-Snell residual plots for a fitted \code{"pcrr"} model, one page per
-#' event type.
+#' @description
+#' Up to two diagnostic screens per model case, each with one panel per
+#' selected event. The baseline screen draws the fitted baseline
+#' \eqn{u_k(t)} against a semiparametric estimate that assumes the same link:
+#' Fine--Gray under proportional hazards (PH), a proportional odds
+#' subdistribution model under proportional odds (PO). The Cox--Snell screen
+#' draws the Nelson--Aalen estimate of the cumulative hazard of the Cox--Snell
+#' residuals against the 45-degree line. For each case the baseline screen
+#' comes first; either screen can be switched off with \code{baseline} or
+#' \code{coxsnell}.
 #'
 #' @details
-#' \emph{Cox-Snell residuals.} For event type \eqn{k} the fitted cumulative
-#' subdistribution hazard of subject \eqn{i} is
-#' \deqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)
-#'   = -\log\{1-\widehat{F}_k(X_i;\mathbf{Z}_i)\}
-#'   = \frac{1}{\widehat{\alpha}_k}
-#'     \log\{1+\widehat{\alpha}_k
-#'     \exp(\mathbf{Z}_i^{\top}\widehat{\boldsymbol{\beta}}_k)
-#'     \widehat{u}_k(X_i)\},}
-#' which reduces to
-#' \eqn{\exp(\mathbf{Z}_i^{\top}\widehat{\boldsymbol{\beta}}_k)\widehat{u}_k(X_i)}
-#' as \eqn{\widehat{\alpha}_k \to 0}. If the model is correctly specified these
-#' residuals behave like a censored sample from the unit exponential
-#' distribution, so the Nelson-Aalen estimate of their own cumulative hazard
-#' should follow the 45-degree line.
-#'
-#' \emph{Risk sets.} The residuals are those of the improper random variable
-#' underlying the subdistribution hazard (Fine and Gray, 1999), in which a
-#' subject failing from a competing cause remains at risk for event \eqn{k}
-#' indefinitely. Each subject therefore enters the Nelson-Aalen estimate as
-#' \itemize{
-#'   \item an \emph{event} at \eqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)} if the
-#'   subject failed from cause \eqn{k};
-#'   \item \emph{censored} at \eqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)} if the
-#'   subject was censored without any event;
-#'   \item \emph{censored at infinity} if the subject failed from a competing
-#'   cause.
+#' \strong{Baseline screen: against a semiparametric fit of the same link.}
+#' For each event the fitted \eqn{u_k(t)} is drawn against a semiparametric
+#' estimate of the same quantity, and \emph{which} estimate is used follows the
+#' link that the case fixes:
+#' \describe{
+#'   \item{PH (\eqn{\alpha_k = 0})}{\eqn{\Lambda^{CI}_k(t;\mathbf 0) = u_k(t)},
+#'     so \eqn{u_k(t)} is the baseline cumulative subdistribution hazard and
+#'     the reference is its Breslow-type estimate from
+#'     \code{\link[cmprsk]{crr}} (Fine and Gray, 1999), as in Jeong and Fine
+#'     (2007, Fig. 2).}
+#'   \item{PO (\eqn{\alpha_k = 1})}{\eqn{F_k/(1-F_k) =
+#'     e^{\mathbf z^{\top}\boldsymbol\beta_k}u_k(t)}, so the baseline odds is
+#'     \eqn{u_k(t)} itself, and the reference is the \code{Baseline} column of
+#'     the \code{cum} component of \code{\link[timereg]{prop.odds.subdist}}.}
 #' }
-#' Treating a competing failure as censored at its own residual, as one would
-#' for cause-specific hazard models, removes it from later risk sets and is not
-#' appropriate here.
+#' Both estimators therefore return \eqn{u_k(t)} directly and no transformation
+#' is applied to either curve. Both are evaluated at
+#' \eqn{\mathbf z = \mathbf 0}, so no profile has to be chosen, and both are
+#' fitted to cause \eqn{k} alone with the covariates of the parametric model.
+#' \code{prop.odds.subdist()} draws random numbers, breaking tied event times
+#' with random jitter, so it is run with a fixed seed and the user's random
+#' number stream is restored afterwards: the curve is reproducible and
+#' \code{.Random.seed} is left as it was.
 #'
-#' \emph{Impropriety.} Because the fitted cumulative incidence function may be
-#' improper, \eqn{\widehat{\Lambda}_k(\infty;\mathbf{Z}_i)} can be finite. The
-#' residuals then carry a point mass at infinity equal to the fitted cure
-#' fraction, and the Nelson-Aalen curve is only estimable over the range in
-#' which events are observed. Departures from the 45-degree line should be read
-#' over that range only.
+#' Matching the estimator to the link is what keeps this panel a check on the
+#' \emph{baseline alone}. Comparing a proportional odds fit against
+#' \code{crr}, which assumes proportional hazards, would put a second source
+#' of discrepancy into the same picture and leave a gap uninterpretable.
 #'
-#' @param x an object of class \code{"pcrr"}, fitted with the data retained so
-#'  that \code{x$x}, \code{x$delta} and \code{x$z} are available.
-#' @param case integer vector of model cases to draw, using the case numbers
-#'  shown by \code{\link{print.pcrr}}. If \code{NULL} (default) the first case
-#'  is used and a message is issued when more than one is available. Several
-#'  cases are overlaid and distinguished by line type.
-#' @param event vector of event types to draw, using the codes in
-#'  \code{x$mapping}. If \code{NULL} (default) every event is drawn, one page
-#'  each.
-#' @param color line colors for the model cases. Defaults to \code{"black"} for
-#'  a single case and to distinct colors when several are overlaid.
-#' @param lty line types for the model cases. Defaults to
-#'  \code{seq_len(n_case)}.
-#' @param lwd line width for the Nelson-Aalen curves.
-#' @param ref.col color of the 45-degree reference line. Default \code{"red"}.
-#' @param ref.lty line type of the 45-degree reference line. Default 2.
-#' @param conf.int logical value. If \code{TRUE}, pointwise confidence limits
-#'  for the Nelson-Aalen estimate are added. Default is \code{FALSE}.
-#' @param xlab,ylab axis labels.
-#' @param xlim,ylim axis limits. If \code{NULL}, a common square range is
-#'  computed from the residuals so that the reference line is a true diagonal.
-#' @param legend logical value indicating whether a legend is drawn.
-#' @param legend.pos position of the legend, passed to
-#'  \code{\link[graphics]{legend}}. Default \code{"topleft"}.
-#' @param main main title. If \code{NULL}, the event being plotted is used.
-#'  A vector is recycled over the selected events.
-#' @param ask logical value. If \code{TRUE}, the user is prompted before each
-#'  new page. If \code{NULL} (default), prompting is enabled only when several
-#'  events are drawn on an interactive single-panel device.
-#' @param ... additional graphical parameters passed to
-#'  \code{\link[graphics]{plot}}.
+#' This is the primary diagnostic: its reference is nonparametric in the
+#' baseline and covers the whole observed range. Curvature throughout points at
+#' a misspecified baseline; a gap opening only in the tail points at the
+#' extrapolation rather than the fit. The semiparametric curve ends at the end
+#' of follow-up, so with a larger \code{xmax} only the parametric curve
+#' continues. For cumulative incidence curves at chosen covariate profiles see
+#' \code{\link{predict.pcrr}}.
+#'
+#' \strong{Cox--Snell screen.}
+#' The residual of subject \eqn{i} for cause \eqn{k} is the fitted cumulative
+#' subdistribution hazard at the observed time,
+#' \eqn{r_i = \alpha_k^{-1}
+#' \log\{1 + \alpha_k e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}
+#' \widehat{u}_k(x_i)\}}, which is
+#' \eqn{e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}\widehat u_k(x_i)}
+#' when \eqn{\alpha_k = 0}. It counts as an event for a failure from cause
+#' \eqn{k} and as censored otherwise. Subjects failing from a competing cause
+#' are censored at \eqn{+\infty}, so they never leave the risk set, as the
+#' subdistribution hazard requires. The Nelson--Aalen estimate of the
+#' cumulative hazard of the residuals is then drawn as a step function
+#' jumping at the event residuals, with pointwise limits if
+#' \code{conf.int = TRUE}.
+#'
+#' \strong{Where the 45-degree line is valid.} If the residuals were
+#' \eqn{\mathrm{Exp}(1)} the curve would follow the diagonal. They are not
+#' when the fitted baseline is bounded, \eqn{\widehat u_k(\infty) < \infty}:
+#' the fitted cumulative incidence is then improper (a cure fraction exists),
+#' so subject \eqn{i}'s residual is \eqn{\mathrm{Exp}(1)} only up to
+#' \eqn{L_i = \widehat\Lambda^{CI}_k(\infty; \mathbf{z}_i)}, beyond which its
+#' remaining mass, \eqn{e^{-L_i} = 1 - \widehat F_k(\infty; \mathbf{z}_i)},
+#' sits at \eqn{+\infty}. Since \eqn{L_i} varies with the covariates the
+#' residuals are not identically distributed and no single reference exists.
+#' On \eqn{0 \le u < \min_i L_i} nothing has been relocated yet and the
+#' diagonal is exact; that region is shaded, its edge is marked by a dotted
+#' line whose position the legend reports, and \strong{the plot should be
+#' read there and not beyond}. Past it the curve bends below the diagonal even
+#' when the model is correct. When the fitted baseline is unbounded every
+#' \eqn{L_i} is infinite: nothing is shaded and the diagonal is exact
+#' throughout.
+#'
+#' No p-value is reported and none should be attached. Tests built from fitted
+#' residuals treated as if they were the true errors understate significance
+#' systematically (Durbin, in the discussion of Cox and Snell, 1968, p.269),
+#' and adjusting the residuals does not help because the adjustment leaves
+#' their correlation unchanged (Loynes, 1969, p.105).
+#'
+#' \strong{Layout.} The selected cases are drawn in turn, each case's
+#' baseline screen followed by its Cox--Snell screen. A screen is one graphics
+#' page with a panel per selected event, titled by the event code and its
+#' link, under a header giving the case label (or \code{main}) and, beneath
+#' it, the quantity shown (\code{ylab} or \code{xlab.coxsnell}). If the
+#' events do not fit the grid (see \code{mfrow}) the screen continues on
+#' further pages, each with the header repeated. Graphical parameters are
+#' restored on exit.
+#'
+#' \strong{Incomplete panels.} A case whose optimisation did not converge is
+#' still drawn, with a warning that its curves should not be interpreted. If
+#' a semiparametric fit fails, a warning is issued and the panel shows the
+#' parametric curve alone; a warning is also issued when \code{crr()} does
+#' not converge. An observed event whose residual is not finite, because the
+#' fitted model is not defined at its time, is dropped from the Cox--Snell
+#' panel with a warning, and a panel left without events shows only a note.
+#'
+#' @param x an object of class \code{"pcrr"}. It must store the original data
+#'  (components \code{x}, \code{delta} and \code{z}); otherwise an error is
+#'  raised.
+#' @param case integer vector selecting model cases, numbered as shown by
+#'  \code{\link{print.pcrr}}. Cases are drawn in the order given and
+#'  duplicates are dropped. If \code{NULL} (default) every case is drawn.
+#' @param event vector of event codes, as stored in \code{x$mapping}. If
+#'  \code{NULL} (default) every event is drawn. Supplying \code{event} keeps
+#'  only those events, in the order given; the case selection is unaffected.
+#' @param baseline,coxsnell logical; draw the baseline screen and the
+#'  Cox--Snell screen respectively. Both default to \code{TRUE}, and at least
+#'  one must be. A screen that is switched off is not computed either
+#'  (\code{baseline = FALSE} skips the semiparametric fits) and has no
+#'  component in the returned list.
+#' @param col.par colour of the parametric curve on the baseline screen, and of
+#'  the Nelson--Aalen curve and its limits on the Cox--Snell screen.
+#' @param col.semi colour of the semiparametric curve on the baseline screen.
+#' @param lty.par,lty.semi line types of the parametric and semiparametric
+#'  curves on the baseline screen.
+#' @param ref.col,ref.lty colour and line type of the 45-degree line on the
+#'  Cox--Snell screen.
+#' @param shade.col fill colour of the region in which the 45-degree line is
+#'  exact. \code{NA} suppresses the shading; the dotted line at its edge is
+#'  still drawn.
+#' @param conf.int logical; add pointwise limits at level 0.95, as dotted
+#'  lines, to the Nelson--Aalen estimate on the Cox--Snell screen. The limits
+#'  then enter the automatic axis range. Default \code{FALSE}.
+#' @param ylim y-axis limits applied to every baseline panel. If \code{NULL}
+#'  (default) each panel runs from 0 to 1.05 times the largest finite value
+#'  of its two curves on the time axis; see also \code{common.ylim}.
+#' @param lim.coxsnell limits of the Cox--Snell panels, applied to both axes so
+#'  that the 45-degree line runs corner to corner. If \code{NULL} (default)
+#'  each panel runs from 0 to the largest event residual or estimated
+#'  cumulative hazard, the upper limit included when \code{conf.int = TRUE};
+#'  see also \code{common.ylim}.
+#' @param xmin,xmax time range of the baseline panels. \code{xmin} must be
+#'  non-negative and \code{xmax} larger than it; \code{xmax = NULL} (default)
+#'  means \code{x$maxtime}, the end of follow-up, where the semiparametric
+#'  curve ends. Neither affects the Cox--Snell screen.
+#' @param xlab,ylab axis labels of the baseline panels; \code{ylab} also
+#'  appears in the header of the baseline screen. Under a PO link the curve
+#'  is the baseline odds rather than a cumulative hazard, and the label is
+#'  not adapted to the link, so set it when PO cases are drawn.
+#' @param xlab.coxsnell,ylab.coxsnell axis labels of the Cox--Snell panels;
+#'  \code{xlab.coxsnell} also appears in the header of the Cox--Snell screen.
+#' @param legend logical; draw a legend on each panel.
+#' @param legend.pos legend positions as \code{\link[graphics]{legend}}
+#'  keywords, the first for the baseline screen and the second for the
+#'  Cox--Snell screen; a single value serves both. The defaults suit a rising
+#'  baseline and a residual curve on or below the diagonal.
+#' @param legend.title title of the legends; \code{NULL} (default) for none.
+#' @param lwd line width of the curves on both screens.
+#' @param main title(s) replacing the case label in the screen headers,
+#'  recycled over the selected cases so that each element titles one case's
+#'  screens. If \code{NULL} (default) the case label is used. Panel titles
+#'  are not affected.
+#' @param n.grid number of time points, from \code{xmin} to \code{xmax}, at
+#'  which the parametric curve is evaluated; at least 2. Default 300. The
+#'  semiparametric curve is a step function and is drawn at its own jump
+#'  times.
+#' @param mfrow panel grid of a screen as \code{c(rows, columns)}. If
+#'  \code{NULL} (default), a grid already set with \code{par(mfrow = )} is
+#'  used together with the current margins; failing that, the grid has
+#'  \code{floor(sqrt(n))} rows and enough columns for the \code{n} selected
+#'  events.
+#' @param common.ylim logical; give all panels of a screen the same range,
+#'  the y-axis on the baseline screen and both axes on the Cox--Snell screen,
+#'  instead of scaling each panel on its own. Ignored where \code{ylim} or
+#'  \code{lim.coxsnell} fixes the range. Default \code{FALSE}.
+#' @param ask logical; prompt before each new page. If \code{NULL} (default)
+#'  it is \code{TRUE} when more than one page is drawn on an interactive
+#'  device (see \code{\link[grDevices]{dev.interactive}}).
+#' @param ... further graphical parameters passed to
+#'  \code{\link[graphics]{plot.default}} when each panel is set up, such as
+#'  \code{cex.axis} or \code{las}; they do not reach the curves or the
+#'  legends.
 #'
 #' @return
-#' Invisibly, a list with one element per selected case, each holding a list of
-#' per-event data frames of the residuals (\code{resid}), the status indicator
-#' used in the risk set (\code{status}) and the classification
-#' (\code{type}). The plots are produced as a side effect.
+#' Invisibly, a list with one element per selected case, named by its model
+#' label. Each is a list with one element per selected event, named after the
+#' event code (e.g. \code{"event 1"}), holding a component for each screen
+#' drawn:
+#' \describe{
+#'   \item{\code{baseline}}{a list with \code{link} (\code{"PH"} or
+#'     \code{"PO"}), \code{time} (the evaluation grid), \code{parametric}
+#'     (\eqn{\widehat u_k} on that grid) and \code{semiparametric} (the step
+#'     function as a list with \code{time} and \code{u}, or \code{NULL} if it
+#'     could not be computed).}
+#'   \item{\code{resid}}{a data frame with one row per subject: \code{resid},
+#'     the residual (\code{Inf} for competing failures and wherever the model
+#'     is not defined); \code{status}, 1 for an event of this cause and 0
+#'     otherwise; \code{type}, one of \code{"event"}, \code{"censored"} and
+#'     \code{"competing"}; and \code{L}, the truncation point \eqn{L_i}
+#'     (\code{Inf} when the fitted baseline is unbounded). Events dropped
+#'     from the plot are kept here.}
+#' }
+#' The Nelson--Aalen curves are not returned. The plots are produced as a
+#' side effect.
 #'
-#' @references
-#' Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
-#' subdistribution of a competing risk. \emph{Journal of the American
-#' Statistical Association} 94, 496--509.
 #'
 #' @seealso
 #' \code{\link{pcrr}},
 #' \code{\link{print.pcrr}},
+#' \code{\link{summary.pcrr}},
 #' \code{\link{predict.pcrr}},
-#' \code{\link{plot.predict.pcrr}}
+#' \code{\link{cure.pcrr}}
 #'
-#' @importFrom graphics abline legend lines par
-#' @importFrom grDevices dev.interactive devAskNewPage
-#' @importFrom survival Surv survfit
 #'
 #' @export
 plot.pcrr <- function(x, case = NULL, event = NULL,
-                      color = NULL, lty = NULL, lwd = 2,
+                      baseline = TRUE, coxsnell = TRUE,
+                      col.par = "black", col.semi = "blue",
+                      lty.par = 1, lty.semi = 2,
                       ref.col = "red", ref.lty = 2,
-                      conf.int = FALSE,
-                      xlab = "Cox-Snell residual",
-                      ylab = "Estimated cumulative hazard",
-                      xlim = NULL, ylim = NULL,
-                      legend = TRUE, legend.pos = "topleft",
-                      main = NULL, ask = NULL, ...) {
+                      shade.col = "gray93", conf.int = FALSE,
+                      ylim = NULL, lim.coxsnell = NULL,
+                      xmin = 0, xmax = NULL,
+                      xlab = "Time",
+                      ylab = "Baseline Cumulative Hazard",
+                      xlab.coxsnell = "Cox-Snell Residual",
+                      ylab.coxsnell = "Estimated Cumulative Hazard",
+                      legend = TRUE,
+                      legend.pos = c("bottomright", "topleft"),
+                      legend.title = NULL, lwd = 2, main = NULL,
+                      n.grid = 300, mfrow = NULL, common.ylim = FALSE,
+                      ask = NULL, ...) {
   
   ## ------------------------------------------------------------------
-  ## 0. the original data must have been retained by pcrr()
+  ## 0. which pages are drawn, and the data they need
   ## ------------------------------------------------------------------
+  is_flag <- function(v) is.logical(v) && length(v) == 1L && !is.na(v)
+  if (!is_flag(baseline) || !is_flag(coxsnell))
+    stop("`baseline` and `coxsnell` must each be TRUE or FALSE.",
+         call. = FALSE)
+  if (!baseline && !coxsnell)
+    stop("At least one of `baseline` and `coxsnell` must be TRUE.",
+         call. = FALSE)
+  
   if (is.null(x$x) || is.null(x$delta) || is.null(x$z))
     stop("The original data are not stored in the fitted object, so the ",
-         "Cox-Snell residuals cannot be computed.", call. = FALSE)
+         "diagnostics cannot be computed.", call. = FALSE)
+  
+  ## one position per page : a rising baseline leaves the lower right free,
+  ## a Cox-Snell curve that drops below y = x leaves the upper left free
+  legend.pos <- rep(legend.pos, length.out = 2)
   
   xt    <- as.numeric(x$x)
   delta <- as.matrix(x$delta)
@@ -924,26 +1064,30 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
   tol   <- 1e-12
   
   ## ------------------------------------------------------------------
-  ## 1. case selection : default is a single case, several are overlaid
+  ## 1. case selection : one page pair per case, never overlaid
   ## ------------------------------------------------------------------
   avail_case <- seq_len(nrow(x$case_all))
   if (is.null(case)) {
-    case <- avail_case[1]
-    if (length(avail_case) > 1)
-      message("Several model cases are available; showing case ", case,
-              " only.\nUse `case = ` to select or overlay cases :\n",
-              paste(x$case_model, collapse = "\n"))
+    case <- avail_case
   } else {
     if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
         any(case != floor(case)) || !all(case %in% avail_case))
       stop("`case` must be one or more of: ",
-           paste(avail_case, collapse = ", "), call. = FALSE)
+           paste(avail_case, collapse = ", "), "\n",
+           paste(x$case_model[avail_case], collapse = "\n"), call. = FALSE)
     case <- as.integer(unique(case))
   }
   n_case <- length(case)
   
+  conv <- vapply(case, function(i)
+    isTRUE(x$mle_case_all[[i]]$convergence == 0), logical(1))
+  if (any(!conv))
+    warning("The following model case(s) did not converge. The curves are ",
+            "drawn at these parameter values and should not be interpreted :\n",
+            paste(x$case_model[case[!conv]], collapse = "\n"), call. = FALSE)
+  
   ## ------------------------------------------------------------------
-  ## 2. event selection : one page each
+  ## 2. event selection : one panel each, inside every page
   ## ------------------------------------------------------------------
   mapping <- x$mapping
   if (is.null(event)) {
@@ -954,19 +1098,28 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
            paste(mapping, collapse = ", "), call. = FALSE)
     event <- unique(event)
   }
+  k_of    <- match(event, mapping)          # internal cause index of each event
   n_event <- length(event)
   
-  ## ------------------------------------------------------------------
-  ## 3. line appearance : one curve per case
-  ## ------------------------------------------------------------------
-  if (is.null(color))
-    color <- if (n_case == 1) "black" else seq_len(n_case) + 1
-  color <- rep(color, length.out = n_case)
-  if (is.null(lty)) lty <- seq_len(n_case)
-  lty   <- rep(lty, length.out = n_case)
+  ## the link a case fixes for cause k : alpha = 0 is PH, alpha = 1 is PO
+  link_of <- function(i_case, k) if (x$case_all[i_case, k] == 0) "PH" else "PO"
   
   ## ------------------------------------------------------------------
-  ## 4. baseline cumulative subdistribution hazard u_k(t)
+  ## 3. time axis of the baseline page
+  ## ------------------------------------------------------------------
+  if (!is.numeric(xmin) || length(xmin) != 1 || !is.finite(xmin) || xmin < 0)
+    stop("`xmin` must be a single non-negative number.", call. = FALSE)
+  if (is.null(xmax)) xmax <- x$maxtime
+  if (!is.numeric(xmax) || length(xmax) != 1 || !is.finite(xmax) ||
+      xmax <= xmin)
+    stop("`xmax` must be a single number larger than `xmin`.", call. = FALSE)
+  if (!is.numeric(n.grid) || length(n.grid) != 1 || !is.finite(n.grid) ||
+      n.grid < 2)
+    stop("`n.grid` must be a single number of at least 2.", call. = FALSE)
+  tgrid <- seq(xmin, xmax, length.out = as.integer(n.grid))
+  
+  ## ------------------------------------------------------------------
+  ## 4. parametric baseline u_k(t)
   ## ------------------------------------------------------------------
   u_fun <- function(t, pars) {
     if (dist == "logistic") {
@@ -986,7 +1139,24 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     }
   }
   
-  ## pull the parameters of event k out of a case's coefficient vector
+  ## limit of u_k. Finite means the fitted CIF is improper, i.e. a cure
+  ## fraction exists, which is what makes L_i finite below.
+  u_inf_fun <- function(pars) {
+    if (dist == "logistic") {
+      p <- pars$p
+      if (p >= 1) Inf else -log1p(-p)
+    } else {
+      rho <- pars$rho; tau <- pars$tau
+      eta <- if (is.null(pars$eta)) 0 else pars$eta
+      if (abs(rho) < tol) Inf
+      else if (abs(eta) < tol) { if (rho < 0) -tau / rho else Inf }
+      else if (rho < 0) tau * (1 - exp(eta)) / (rho * eta)
+      else if (eta < 0) -tau * exp(eta) / (rho * eta)
+      else Inf
+    }
+  }
+  
+  ## pull the parameters of cause k out of a case's coefficient vector
   get_pars <- function(coefs, k) {
     if (dist == "gompertz2") {
       b0 <- (k - 1) * (3 + P)
@@ -1004,15 +1174,101 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
   }
   
   ## ------------------------------------------------------------------
-  ## 5. Cox-Snell residuals and the risk set they enter
+  ## 5. semiparametric u_k(t), matched to the link of each case
+  ## ------------------------------------------------------------------
+  ##  Both estimators leave the baseline unspecified and return u_k(t) at
+  ##  z = 0 directly, on the same scale as the parametric curve :
+  ##    PH (alpha = 0) : F_k = 1 - exp{-e^{z'b} u_k(t)}, and crr() gives the
+  ##      Breslow-type jumps of u_k, whose running sum is u_k itself.
+  ##    PO (alpha = 1) : F_k/(1 - F_k) = e^{z'b} u_k(t), and the "Baseline"
+  ##      column of prop.odds.subdist() is that baseline odds.
+  ##  Each is fitted to one cause at a time, which is legitimate : a
+  ##  correctly specified model for cause k identifies u_k whatever the
+  ##  other causes do. Matching the estimator to the link keeps a gap
+  ##  between the curves attributable to the baseline; crr() against a PO
+  ##  fit would estimate log(1 + u_k), a different function.
+  fs <- rep(0L, length(xt))                       # 0 = censored, k = cause k
+  for (k in seq_len(K)) fs[delta[, k] == 1] <- k
+  
+  ## a step function running from 0 to the end of follow-up
+  step_curve <- function(tt, uu) {
+    ok <- is.finite(tt) & is.finite(uu)
+    tt <- tt[ok]; uu <- uu[ok]
+    if (length(tt) == 0) return(NULL)
+    if (tt[1] > 0) { tt <- c(0, tt); uu <- c(0, uu) }
+    n <- length(tt)
+    if (x$maxtime > tt[n]) { tt <- c(tt, x$maxtime); uu <- c(uu, uu[n]) }
+    list(time = tt, u = uu)
+  }
+  
+  ## prop.odds.subdist() draws from the RNG on every call and breaks tied
+  ## event times with random jitter. Run it on a fixed stream and restore
+  ## the user's afterwards, so the curve is reproducible and plotting
+  ## leaves the random number stream untouched.
+  keep_seed <- function(expr) {
+    genv <- globalenv()
+    had  <- exists(".Random.seed", envir = genv, inherits = FALSE)
+    if (had) old <- get(".Random.seed", envir = genv, inherits = FALSE)
+    on.exit(if (had) assign(".Random.seed", old, envir = genv)
+            else if (exists(".Random.seed", envir = genv, inherits = FALSE))
+              rm(".Random.seed", envir = genv))
+    set.seed(1L)
+    expr
+  }
+  
+  semi_ph <- function(k, ev) {
+    tryCatch({
+      fg <- crr(ftime = xt, fstatus = fs, cov1 = z, failcode = k,
+                cencode = 0L, variance = FALSE)
+      if (!isTRUE(fg$converged))
+        warning("crr() did not converge for event ", ev,
+                ", so its curve may be unreliable.", call. = FALSE)
+      step_curve(fg$uftime, cumsum(fg$bfitj))
+    }, error = function(err) {
+      warning("crr() failed for event ", ev, " : ", conditionMessage(err),
+              "\nThe semiparametric curve is omitted there.", call. = FALSE)
+      NULL
+    })
+  }
+  
+  semi_po <- function(k, ev) {
+    tryCatch({
+      znm <- paste0("z", seq_len(P))
+      dd  <- data.frame(xt, fs, z)
+      names(dd) <- c("time", "status", znm)
+      fo  <- as.formula(paste("Event(time, status) ~",
+                              paste(znm, collapse = " + ")))
+      po  <- keep_seed(prop.odds.subdist(fo, data = dd, cause = k,
+                                         n.sim = 0, baselinevar = 0))
+      step_curve(po$cum[, "time"], po$cum[, "Baseline"])
+    }, error = function(err) {
+      warning("prop.odds.subdist() failed for event ", ev, " : ",
+              conditionMessage(err),
+              "\nThe semiparametric curve is omitted there.", call. = FALSE)
+      NULL
+    })
+  }
+  
+  ## fit only the (event, link) pairs that the selected cases use
+  semi <- NULL
+  if (baseline) {
+    need <- matrix(FALSE, n_event, 2, dimnames = list(NULL, c("PH", "PO")))
+    for (i_case in case)
+      for (e in seq_len(n_event)) need[e, link_of(i_case, k_of[e])] <- TRUE
+    semi <- lapply(seq_len(n_event), function(e)
+      list(PH = if (need[e, "PH"]) semi_ph(k_of[e], event[e]),
+           PO = if (need[e, "PO"]) semi_po(k_of[e], event[e])))
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 6. Cox-Snell residuals and the risk set they enter
   ## ------------------------------------------------------------------
   any_event <- rowSums(delta) > 0
   
-  cs_resid <- function(i_case, k) {
-    pars <- get_pars(x$mle_case_all[[i_case]]$par, k)
-    ezb  <- as.numeric(exp(z %*% pars$beta))
-    u    <- u_fun(xt, pars)
-    a    <- as.numeric(pars$alpha)
+  cs_resid <- function(pars, k) {
+    ezb <- as.numeric(exp(z %*% pars$beta))
+    u   <- u_fun(xt, pars)
+    a   <- as.numeric(pars$alpha)
     
     if (abs(a) < 1e-8) {
       r <- ezb * u
@@ -1030,103 +1286,269 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     status  <- as.numeric(is_k)
     r[is_comp] <- Inf                          # still at risk, forever
     
-    type <- ifelse(is_k, "event",
-                   ifelse(is_comp, "competing", "censored"))
-    data.frame(resid = r, status = status, type = type,
-               stringsAsFactors = FALSE)
+    ## L_i, the point past which subject i's residual is no longer Exp(1)
+    uinf <- u_inf_fun(pars)
+    L <- if (!is.finite(uinf)) rep(Inf, length(r))
+    else if (abs(a) < 1e-8) ezb * uinf
+    else log1p(a * ezb * uinf) / a
+    
+    data.frame(resid = r, status = status,
+               type = ifelse(is_k, "event",
+                             ifelse(is_comp, "competing", "censored")),
+               L = L, stringsAsFactors = FALSE)
   }
   
   ## Nelson-Aalen estimate of the cumulative hazard of the residuals.
   ## Residuals censored at infinity are placed beyond every event so that
   ## they stay in the risk set throughout.
   na_curve <- function(cs, lab) {
-    fin <- cs$resid[is.finite(cs$resid)]
     bad <- cs$status == 1 & !is.finite(cs$resid)
     if (any(bad)) {
       warning(lab, "\n", sum(bad), " observed event(s) fall outside the ",
               "fitted model's valid range and were dropped from the ",
               "residual plot.", call. = FALSE)
       cs <- cs[!bad, , drop = FALSE]
-      fin <- cs$resid[is.finite(cs$resid)]
     }
     if (!any(cs$status == 1)) return(NULL)
+    fin <- cs$resid[is.finite(cs$resid)]
     far <- if (length(fin)) max(fin) * 1.05 + 1 else 1
     rr  <- cs$resid
     rr[!is.finite(rr)] <- far
     
-    fit <- survfit(Surv(rr, cs$status) ~ 1, type = "fleming-harrington")
+    fit  <- survfit(Surv(rr, cs$status) ~ 1, type = "fleming-harrington")
     keep <- fit$n.event > 0
     list(time = fit$time[keep],
          H    = -log(fit$surv[keep]),
          lo   = -log(fit$upper[keep]),
-         hi   = -log(fit$lower[keep]))
+         hi   = -log(fit$lower[keep]),
+         Lmin = suppressWarnings(min(cs$L)))
   }
   
   ## ------------------------------------------------------------------
-  ## 6. device set-up : one page per event, in the manner of plot.lm
+  ## 7. everything the pages draw, computed before the first page
   ## ------------------------------------------------------------------
+  out <- vector("list", n_case)             # returned
+  nac <- vector("list", n_case)             # Nelson-Aalen curves, drawn only
+  names(out) <- x$case_model[case]
+  
+  for (ci in seq_len(n_case)) {
+    i_case <- case[ci]
+    coefs  <- x$mle_case_all[[i_case]]$par
+    out[[ci]] <- vector("list", n_event)
+    nac[[ci]] <- vector("list", n_event)
+    names(out[[ci]]) <- paste("event", event)
+    
+    for (e in seq_len(n_event)) {
+      k    <- k_of[e]
+      lnk  <- link_of(i_case, k)
+      pars <- get_pars(coefs, k)
+      item <- list()
+      
+      if (baseline)
+        item$baseline <- list(link = lnk, time = tgrid,
+                              parametric = u_fun(tgrid, pars),
+                              semiparametric = semi[[e]][[lnk]])
+      if (coxsnell) {
+        cs <- cs_resid(pars, k)
+        item$resid <- cs
+        ## `[<-` with list() : a NULL curve must not drop the slot
+        nac[[ci]][e] <- list(na_curve(cs, paste0(x$case_model[i_case],
+                                                 "\nevent ", event[e])))
+      }
+      out[[ci]][[e]] <- item
+    }
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 8. panel grid : the selected events on one page
+  ## ------------------------------------------------------------------
+  grid_dim <- function(n) {
+    nr <- max(1L, as.integer(floor(sqrt(n))))
+    c(nr, as.integer(ceiling(n / nr)))
+  }
+  
   user_split <- !identical(as.integer(par("mfrow")), c(1L, 1L))
-  if (is.null(ask))
-    ask <- (n_event > 1) && !user_split && dev.interactive()
+  if (is.null(mfrow)) {
+    auto_layout <- !user_split
+    dims <- if (user_split) as.integer(par("mfrow")) else grid_dim(n_event)
+  } else {
+    if (!is.numeric(mfrow) || length(mfrow) != 2 || any(!is.finite(mfrow)) ||
+        any(mfrow < 1))
+      stop("`mfrow` must be a numeric vector of length 2, e.g. c(1, 2).",
+           call. = FALSE)
+    auto_layout <- TRUE
+    dims <- as.integer(mfrow)
+  }
+  per_page <- dims[1] * dims[2]
+  
+  ## ------------------------------------------------------------------
+  ## 9. device set-up
+  ## ------------------------------------------------------------------
+  n_quant <- baseline + coxsnell
+  n_page  <- n_case * n_quant * ceiling(n_event / per_page)
+  
+  op <- par(no.readonly = TRUE)
+  on.exit(par(op), add = TRUE)
+  
+  if (is.null(ask)) ask <- (n_page > 1) && dev.interactive()
   if (isTRUE(ask)) {
     oask <- devAskNewPage(TRUE)
     on.exit(devAskNewPage(oask), add = TRUE)
   }
   
   ## ------------------------------------------------------------------
-  ## 7. one page per event
+  ## 10. small helpers
   ## ------------------------------------------------------------------
-  out <- vector("list", n_case)
-  names(out) <- x$case_model[case]
-  for (ci in seq_len(n_case)) {
-    out[[ci]] <- vector("list", n_event)
-    names(out[[ci]]) <- paste("event", event)
+  ## largest finite value, or NA when there is none
+  top_of <- function(v) {
+    v <- v[is.finite(v)]
+    if (length(v) == 0 || max(v) <= 0) NA_real_ else max(v)
+  }
+  base_top <- function(b) {
+    sp <- b$semiparametric
+    top_of(c(b$parametric, if (!is.null(sp)) sp$u[sp$time <= xmax]))
+  }
+  cs_top <- function(g) {
+    if (is.null(g)) return(NA_real_)
+    top_of(c(g$time, g$H, if (isTRUE(conf.int)) g$hi))
   }
   
-  for (ei in seq_len(n_event)) {
-    ev <- event[ei]
-    k  <- match(ev, mapping)
+  ## the case label, and the quantity beside it, in the outer margin
+  page_header <- function(t1, t2) {
+    cx <- par("cex")
+    if (!is.finite(cx) || cx <= 0) cx <- 1
+    mtext(t1, side = 3, outer = TRUE, line = 1.50 / cx,
+          font = 2, cex = 1.15 / cx)
+    if (!is.null(t2) && nzchar(t2))
+      mtext(t2, side = 3, outer = TRUE, line = 0.35 / cx, cex = 0.95 / cx)
+  }
+  
+  ## one baseline panel : parametric u_k against the semiparametric one
+  draw_base_panel <- function(b, main_p, ylim_p) {
+    plot(c(xmin, xmax), ylim_p, type = "n",
+         xlab = xlab, ylab = ylab, main = main_p, ...)
     
-    cs_l <- lapply(seq_len(n_case), function(ci) cs_resid(case[ci], k))
-    for (ci in seq_len(n_case)) out[[ci]][[ei]] <- cs_l[[ci]]
-    
-    na_l <- lapply(seq_len(n_case), function(ci)
-      na_curve(cs_l[[ci]], x$case_model[case[ci]]))
-    
-    ## common square range so that the reference line is a true diagonal
-    rng <- c(unlist(lapply(cs_l, function(d) d$resid[is.finite(d$resid)])),
-             unlist(lapply(na_l, function(g) if (is.null(g)) NULL else g$H)))
-    rng <- rng[is.finite(rng)]
-    top <- if (length(rng)) max(rng) else 1
-    if (!is.finite(top) || top <= 0) top <- 1
-    xl <- if (is.null(xlim)) c(0, top) else xlim
-    yl <- if (is.null(ylim)) c(0, top) else ylim
-    
-    main_p <- if (is.null(main)) paste("Cox-Snell residuals : event", ev)
-    else rep(main, length.out = n_event)[ei]
-    
-    plot(xl, yl, type = "n", xlab = xlab, ylab = ylab, main = main_p, ...)
-    abline(0, 1, col = ref.col, lty = ref.lty)
-    
-    for (ci in seq_len(n_case)) {
-      g <- na_l[[ci]]
-      if (is.null(g)) next
-      if (isTRUE(conf.int)) {
-        lines(g$time, g$lo, type = "s", lty = 3, col = color[ci], lwd = 1)
-        lines(g$time, g$hi, type = "s", lty = 3, col = color[ci], lwd = 1)
-      }
-      lines(g$time, g$H, type = "s", lty = lty[ci], col = color[ci], lwd = lwd)
-    }
+    sp <- b$semiparametric
+    if (!is.null(sp))
+      lines(sp$time, sp$u, type = "s", col = col.semi, lty = lty.semi,
+            lwd = lwd)
+    lines(b$time, b$parametric, col = col.par, lty = lty.par, lwd = lwd)
     
     if (isTRUE(legend)) {
-      lg  <- if (n_case == 1) "Nelson-Aalen of residuals"
-      else paste("case", case)
-      lgc <- c(color, ref.col)
-      lgl <- c(lty, ref.lty)
-      lgw <- c(rep(lwd, n_case), 1)
-      legend(legend.pos, legend = c(lg, "45-degree line"),
-             col = lgc, lty = lgl, lwd = lgw, bty = "n")
+      has_sp   <- !is.null(sp)
+      semi_lab <- if (b$link == "PH") "Fine-Gray (semiparametric)"
+      else "Proportional odds (semiparametric)"
+      legend(legend.pos[1],
+             legend = c(paste0("Parametric (", dist, ")"),
+                        if (has_sp) semi_lab),
+             col = c(col.par, if (has_sp) col.semi),
+             lty = c(lty.par, if (has_sp) lty.semi),
+             lwd = lwd, title = legend.title, bty = "n")
     }
+  }
+  
+  ## one Cox-Snell panel : Nelson-Aalen of the residuals against y = x
+  draw_cs_panel <- function(g, main_p, lim_p) {
+    if (is.null(g)) {
+      plot.new()
+      title(main = main_p)
+      mtext("no usable events for this cause", side = 3, line = -2,
+            cex = 0.8)
+      return(invisible(NULL))
+    }
+    
+    plot(lim_p, lim_p, type = "n",
+         xlab = xlab.coxsnell, ylab = ylab.coxsnell, main = main_p, ...)
+    
+    ## The 45-degree line is exact only while no residual has yet been
+    ## relocated to +Inf, that is on u < min_i L_i. Shade that region and
+    ## read the plot inside it.
+    Lm    <- g$Lmin
+    valid <- is.finite(Lm) && Lm > 0
+    if (valid && !is.na(shade.col)) {
+      usr <- par("usr")
+      rect(usr[1], usr[3], min(Lm, usr[2]), usr[4], col = shade.col,
+           border = NA)
+      box()
+    }
+    if (valid) abline(v = Lm, col = "gray55", lty = 3)
+    abline(0, 1, col = ref.col, lty = ref.lty)
+    
+    if (isTRUE(conf.int)) {
+      lines(g$time, g$lo, type = "s", col = col.par, lty = 3, lwd = 1)
+      lines(g$time, g$hi, type = "s", col = col.par, lty = 3, lwd = 1)
+    }
+    lines(g$time, g$H, type = "s", col = col.par, lwd = lwd)
+    
+    if (isTRUE(legend)) {
+      lg  <- c("Nelson-Aalen of residuals", "45-degree line")
+      lgc <- c(col.par, ref.col); lgl <- c(1, ref.lty); lgw <- c(lwd, 1)
+      if (valid) {
+        lg  <- c(lg, sprintf("valid up to min L = %.3g", Lm))
+        lgc <- c(lgc, "gray55"); lgl <- c(lgl, 3); lgw <- c(lgw, 1)
+      }
+      legend(legend.pos[2], legend = lg, col = lgc, lty = lgl, lwd = lgw,
+             title = legend.title, bty = "n")
+    }
+    if (valid)
+      mtext("judge inside the shaded region only", side = 3, line = 0.15,
+            adj = 1, cex = 0.7, col = "gray30")
+  }
+  
+  ## one page : every selected event of one case, for one quantity
+  draw_page <- function(ci, page_title, kind) {
+    
+    ## re-setting mfrow rewinds the panel counter, so the page below
+    ## always starts on a fresh device page
+    par(mfrow = dims)
+    cx <- par("cex")
+    if (!is.finite(cx) || cx <= 0) cx <- 1
+    par(oma = c(0, 0, 3.4 / cx, 0))
+    if (auto_layout) par(mar = c(4.1, 4.1, 2.6, 1.6))
+    
+    is_base <- identical(kind, "baseline")
+    quant   <- if (is_base) ylab else xlab.coxsnell
+    
+    ## axis limits : fixed by the user, shared by the page, or per panel.
+    ## On the Cox-Snell page one limit serves both axes, so y = x stays
+    ## the diagonal of a square panel.
+    fixed <- if (is_base) ylim else lim.coxsnell
+    pad   <- if (is_base) 1.05 else 1
+    tops  <- vapply(seq_len(n_event), function(e)
+      if (is_base) base_top(out[[ci]][[e]]$baseline)
+      else cs_top(nac[[ci]][[e]]), numeric(1))
+    
+    if (!is.null(fixed)) {
+      lims <- rep(list(fixed), n_event)
+    } else if (isTRUE(common.ylim)) {
+      v <- suppressWarnings(max(tops, na.rm = TRUE))
+      if (!is.finite(v)) v <- 1
+      lims <- rep(list(c(0, v * pad)), n_event)
+    } else {
+      lims <- lapply(tops, function(v) c(0, (if (is.finite(v)) v else 1) * pad))
+    }
+    
+    for (e in seq_len(n_event)) {
+      main_p <- paste0("event ", event[e], " (",
+                       link_of(case[ci], k_of[e]), ")")
+      if (is_base) draw_base_panel(out[[ci]][[e]]$baseline, main_p, lims[[e]])
+      else         draw_cs_panel(nac[[ci]][[e]], main_p, lims[[e]])
+      
+      ## the header belongs to the device page, so it is redrawn
+      ## whenever the panels spill over onto another one
+      if ((e - 1L) %% per_page == 0L) page_header(page_title, quant)
+    }
+  }
+  
+  ## ------------------------------------------------------------------
+  ## 11. (case, baseline) then (case, Cox-Snell)
+  ## ------------------------------------------------------------------
+  for (ci in seq_len(n_case)) {
+    ttl <- if (is.null(main)) x$case_model[case[ci]]
+    else rep(main, length.out = n_case)[ci]
+    
+    if (baseline) draw_page(ci, ttl, "baseline")
+    if (coxsnell) draw_page(ci, ttl, "coxsnell")
   }
   
   invisible(out)
@@ -1744,19 +2166,27 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   if (ncol(cov) != P) stop("cov must have ", P, " column(s).")
   
   
+  
   # curve labels for the legend, e.g. "obs 1", "obs 2", ...
   labs <- paste0("obs ", seq_len(nrow(cov)))
   
   case_all <- object$case_all
   n_case_all <- nrow(case_all)
+  
+  avail_case <- seq_len(n_case_all)
+  
   if (is.null(case)) {
-    case <- seq_len(n_case_all)
-  } else if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
-             any(case != floor(case)) || any(case < 1) || any(case > n_case_all)) {
-    stop("Please specify `case` correctly.\n\nThe possible model cases are as follows :\n",
-         paste(object$case_model, collapse = "\n"))
+    case <- avail_case
+  } else {
+    if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+        any(case != floor(case)) || !all(case %in% avail_case))
+      stop("`case` must be one or more of: ",
+           paste(avail_case, collapse = ", "),
+           "\n\nThe possible model cases are as follows :\n",
+           paste(object$case_model, collapse = "\n"), call. = FALSE)
+    case <- as.integer(unique(case))
   }
-  case   <- as.integer(case)
+  
   n_case <- length(case)
   
   
@@ -1826,6 +2256,7 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   
   
   pred_list <- vector("list", n_case)
+  #base_cum_haz_list <- vector("list", n_case)
   base_haz_list <- vector("list", n_case)
   sub_haz_list <- vector("list", n_case)
   xmh_base_list <- vector("list", n_case)
@@ -1836,6 +2267,7 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   msg <- vector("list", n_case)
   
   names(pred_list) <- model[case]
+  #names(base_cum_haz_list) <- model[case]
   names(base_haz_list) <- model[case]
   names(sub_haz_list) <- model[case]
   names(xmh_base_list) <- model[case]
@@ -1850,6 +2282,7 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
     coef <- object$mle_case_all[[i]]$par
     
     pred_list[[l]] <- vector("list", length(event))
+    #base_cum_haz_list[[l]] <- vector("list", length(event))
     base_haz_list[[l]] <- vector("list", length(event))
     sub_haz_list[[l]] <- vector("list", length(event))
     xmh_base_list[[l]] <- vector("list", length(event))
@@ -1859,6 +2292,7 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
     msg[[l]] <- object$mle_case_all[[i]]$message
     
     names(pred_list[[l]]) <- paste0("event ", event)
+    #names(base_cum_haz_list[[l]]) <- paste0("event ", event)
     names(base_haz_list[[l]]) <- paste0("event ", event)
     names(sub_haz_list[[l]]) <- paste0("event ", event)
     names(xmh_base_list[[l]]) <- paste0("event ", event)
@@ -2097,12 +2531,14 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
 
       pred <- cbind(times, cif)
       colnames(pred) <- c("time", labs)
+      base_cum_haz <- cbind(time = times, `baseline cumulative hazard` = u)
       base_haz <- cbind(time = times, `baseline hazard` = base_haz)
       sub_haz <- cbind(time = times, sub_haz)
       
       
       
       pred_list[[l]][[e]] <- pred
+      #base_cum_haz_list[[l]][[e]] <- base_cum_haz
       base_haz_list[[l]][[e]] <- base_haz
       sub_haz_list[[l]][[e]] <- sub_haz
       xmh_base_list[[l]][[e]] <- xmh_base
@@ -2117,6 +2553,7 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
 
   out <- list(pred = pred_list,
               baseline_hazard = base_haz_list,
+              #baseline_cumulative_hazard = base_cum_haz_list,
               subdistribution_hazard = sub_haz_list,
               xmh_base = xmh_base_list,
               xmh_obs = xmh_obs_list,
@@ -2249,76 +2686,109 @@ print.predict.pcrr <- function(x, digits = 4, ...){
 
 #' Plot Predicted Cumulative Incidence Functions
 #'
-#' Plots cumulative incidence functions and subdistribution hazards produced by
-#' \code{\link{predict.pcrr}}.
+#' Plots the cumulative incidence functions and subdistribution hazards
+#' produced by \code{\link{predict.pcrr}}. For each selected model case a page
+#' of cumulative incidence panels is drawn, followed, when the hazards are
+#' available, by a page of subdistribution hazard panels. Each page has one
+#' panel per selected event and each panel one curve per covariate profile.
 #'
 #' @details
-#' A \code{"predict.pcrr"} object may hold several transformation-model cases and
-#' several event types. They are displayed differently, because they mean
-#' different things.
+#' A \code{"predict.pcrr"} object may hold several transformation-model cases,
+#' several event types and several covariate profiles, and each has its own
+#' place in the display. \emph{Cases} are never overlaid: the selected cases
+#' are drawn in turn, each case's cumulative incidence page followed by its
+#' subdistribution hazard page (see \code{hazard}). \emph{Events} are the
+#' panels of a page, each titled by its event code. \emph{Covariate profiles}
+#' are the curves within a panel, distinguished by \code{color} (and, if
+#' supplied, \code{lty}), so that a shared color means a shared profile across
+#' panels and pages.
 #'
-#' \emph{Events} are distinct causes of failure, so they are never overlaid.
-#' One page is drawn per event. When more than one event is plotted on a
-#' single-panel device, the pages are shown one at a time in the manner of
-#' \code{\link[stats]{plot.lm}}; see \code{ask}.
+#' Each page carries a header giving the case label (or \code{main}) and,
+#' beneath it, the quantity shown (\code{ylab} or \code{ylab.hazard}). If the
+#' events do not fit the grid (see \code{mfrow}) the page continues on further
+#' pages, each with the header repeated. Graphical parameters are restored on
+#' exit. A case whose optimization did not converge is still drawn, with a
+#' warning that its curves should not be interpreted.
 #'
-#' \emph{Cases} are the same data fitted under different PH/PO assumptions, so
-#' overlaying them is informative. By default only the first available case is
-#' drawn, with a message; specifying \code{case} explicitly overlays the
-#' requested cases in one set of panels. Covariate profiles are distinguished by
-#' \emph{color} and cases by \emph{line type}, so that a shared color means a
-#' shared covariate profile and the line type shows the modelling assumption.
+#' With \code{mark.xmh = TRUE} the turning points of the subdistribution hazard
+#' are marked on both pages: each profile's turning point by a filled point on
+#' its curve and a vertical line in its color, and the baseline turning point
+#' by a vertical line in \code{xmh.col}. Turning points that are missing or lie
+#' outside the range from \code{xmin} to \code{xmax} are not drawn. The legend
+#' gives each profile's turning point and, when it is drawn, the baseline one.
 #'
-#' When the number of drawn curves exceeds \code{max.marks} the annotation is
-#' simplified automatically: the vertical reference lines at the hazard turning
-#' points are dropped (the points on the curves are kept) and the numeric
-#' \eqn{x_{mh}} values are removed from the legend.
+#' When the number of covariate profiles exceeds \code{max.marks} the
+#' annotation is simplified automatically: the profile-specific vertical lines
+#' are dropped (the points on the curves are kept) and the numeric
+#' \eqn{x_{mh}} values are removed from the legend. The baseline line stays,
+#' labelled without its value.
 #'
 #' @param x object of class \code{"predict.pcrr"}.
 #' @param case integer vector of model cases to draw, using the case numbers
-#'  stored in \code{x$case}. If \code{NULL} (default) the first available case
-#'  is used and a message is issued when more than one is available. Several
-#'  cases are overlaid and distinguished by line type.
+#'  stored in \code{x$case}. Cases are drawn in the order given, each on its
+#'  own pages, and duplicates are dropped. If \code{NULL} (default) every
+#'  stored case is drawn.
 #' @param event vector of event types to draw, using the codes stored in
-#'  \code{x$event}. If \code{NULL} (default) every stored event is drawn, one
-#'  page per event.
-#' @param color line colors for the covariate profiles. Recycled to the number
-#'  of profiles. Defaults to \code{seq_len(ncurve) + 1}.
-#' @param lty line types for the model cases. Recycled to the number of
-#'  selected cases. Defaults to \code{seq_len(n_case)}.
-#' @param ylim limits for the y-axis of the cumulative incidence panel. If
-#'  \code{NULL}, limits are computed per event from the drawn curves.
-#' @param xmin minimum value of the x-axis.
-#' @param xmax maximum value of the x-axis. If \code{NULL}, the largest
-#'  prediction time is used.
+#'  \code{x$event}, one panel per event in the order given. If \code{NULL}
+#'  (default) every stored event is drawn.
+#' @param color line colors for the covariate profiles, recycled to the number
+#'  of profiles. Defaults to \code{seq_len(ncurve) + 1}, where \code{ncurve} is
+#'  the number of profiles. The profiles are labelled by \code{x$labels}, or
+#'  \code{"obs 1"}, \code{"obs 2"}, \dots when these are absent.
+#' @param lty line types for the covariate profiles, recycled to the number of
+#'  profiles. Defaults to 1 for every profile.
+#' @param ylim,ylim.hazard y-axis limits of the cumulative incidence panels and
+#'  of the subdistribution hazard panels respectively, applied to every panel
+#'  of that page. If \code{NULL} (default) each panel runs from 0 to the
+#'  largest value of its curves over all prediction times, or to 1.05 times
+#'  that value on the hazard page; see also \code{common.ylim}.
+#' @param xmin,xmax range of the x-axis, shared by every panel on both pages.
+#'  If \code{xmax} is \code{NULL} (default), the largest prediction time of the
+#'  selected cases is used. An \code{xmax} that is not larger than \code{xmin}
+#'  is replaced by \code{xmin + 1}.
 #' @param xlab label for the x-axis.
-#' @param ylab label for the y-axis of the cumulative incidence panel.
-#' @param legend logical value indicating whether a legend is drawn.
-#' @param legend.pos position of the legend, passed to
+#' @param ylab,ylab.hazard y-axis labels of the cumulative incidence panels and
+#'  of the subdistribution hazard panels; each also appears in the header of
+#'  its page.
+#' @param legend logical value indicating whether a legend is drawn on each
+#'  panel.
+#' @param legend.pos position of the legend on both pages, passed to
 #'  \code{\link[graphics]{legend}}. The default is \code{"topleft"}.
 #' @param legend.title optional title for the legend.
 #' @param lwd line width for the curves.
-#' @param main main title. If \code{NULL}, the event being plotted is used.
-#'  A vector is recycled over the selected events.
-#' @param hazard logical value. If \code{TRUE} (default), the subdistribution
-#'  hazard is drawn in a left-hand panel next to the cumulative incidence.
-#' @param mark.xmh logical value. If \code{TRUE} (default), profile-specific
-#'  hazard turning points (\code{xmh_obs}) and the baseline turning point
-#'  (\code{xmh_base}) are marked when they exist.
-#' @param max.marks maximum number of drawn curves for which vertical reference
-#'  lines and numeric legend entries are kept. Above this threshold the
-#'  annotation is simplified. Default is 4.
+#' @param main title(s) replacing the case label in the page headers, recycled
+#'  over the selected cases so that each element titles one case's pages. If
+#'  \code{NULL} (default) the case label is used. Panel titles, which name the
+#'  event, are not affected.
+#' @param hazard logical value. If \code{TRUE} (default) and \code{x} stores
+#'  subdistribution hazards, each case's cumulative incidence page is followed
+#'  by a page of subdistribution hazards; otherwise only the cumulative
+#'  incidence is drawn.
+#' @param mark.xmh logical value. If \code{TRUE} (default), the profile-specific
+#'  hazard turning points (\code{x$xmh_obs}) and the baseline turning point
+#'  (\code{x$xmh_base}) are marked when they exist; see Details.
+#' @param max.marks maximum number of covariate profiles for which the
+#'  profile-specific vertical lines and the numeric legend entries are kept.
+#'  Above this threshold the annotation is simplified. Default is 4.
 #' @param xmh.lty line type for the vertical reference lines at the hazard
 #'  turning points. Default is 3 (dotted).
 #' @param xmh.col color of the baseline \eqn{x_{mh}} reference line. Default is
 #'  \code{"black"}, so that the covariate-free baseline turning point stands out
 #'  from the profile-specific lines, which follow the color of their own curve.
+#' @param mfrow panel grid of a page as \code{c(rows, columns)}. If \code{NULL}
+#'  (default), a grid already set with \code{par(mfrow = )} is used together
+#'  with the current margins; failing that, the grid has \code{floor(sqrt(n))}
+#'  rows and enough columns for the \code{n} selected events.
+#' @param common.ylim logical value. If \code{TRUE}, all panels of a page share
+#'  one y-axis range instead of being scaled separately. Ignored where
+#'  \code{ylim} or \code{ylim.hazard} fixes the range. Default \code{FALSE}.
 #' @param ask logical value. If \code{TRUE}, the user is prompted before each
-#'  new page. If \code{NULL} (default), prompting is enabled only when several
-#'  events are drawn on an interactive single-panel device, so that a device set
-#'  up by the user with \code{\link[graphics]{par}(mfrow)} is left untouched.
+#'  new page. If \code{NULL} (default), prompting is enabled when more than one
+#'  page is drawn on an interactive device (see
+#'  \code{\link[grDevices]{dev.interactive}}).
 #' @param ... additional graphical parameters passed to
-#'  \code{\link[graphics]{plot}}.
+#'  \code{\link[graphics]{plot.default}} when each panel is set up; they do not
+#'  reach the curves or the legends.
 #'
 #' @return
 #' Produces the plots and returns the input object invisibly.
@@ -2327,7 +2797,7 @@ print.predict.pcrr <- function(x, digits = 4, ...){
 #' \code{\link{pcrr}},
 #' \code{\link{predict.pcrr}}
 #'
-#' @importFrom graphics abline legend lines par points
+#' @importFrom graphics abline legend lines mtext par points
 #' @importFrom grDevices dev.interactive devAskNewPage
 #' @importFrom stats approx
 #'
@@ -2404,10 +2874,12 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
   if (is.null(lty))   lty <- 1
   lty   <- rep(lty, length.out = ncurve)
   
-  if (is.null(xmax))
-    xmax <- suppressWarnings(max(vapply(lpos, function(l)
-      max(x$pred[[l]][[epos[1]]][, 1], na.rm = TRUE), numeric(1))))
-  if (!is.finite(xmax) || xmax <= xmin) xmax <- xmin + 1
+  if (!is.numeric(xmin) || length(xmin) != 1 || !is.finite(xmin) || xmin < 0)
+    stop("`xmin` must be a single non-negative number.", call. = FALSE)
+  if (is.null(xmax)) xmax <- x$maxtime
+  if (!is.numeric(xmax) || length(xmax) != 1 || !is.finite(xmax) ||
+      xmax <= xmin)
+    stop("`xmax` must be a single number larger than `xmin`.", call. = FALSE)
   
   ## simplify the annotation when the panel is crowded
   crowded     <- ncurve > max.marks
@@ -2756,14 +3228,21 @@ cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
   
   case_all <- object$case_all
   n_case_all <- nrow(case_all)
+  
+  avail_case <- seq_len(n_case_all)
+  
   if (is.null(case)) {
-    case <- seq_len(n_case_all)
-  } else if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
-             any(case != floor(case)) || any(case < 1) || any(case > n_case_all)) {
-    stop("Please specify `case` correctly.\n\nThe possible model cases are as follows :\n",
-         paste(object$case_model, collapse = "\n"))
+    case <- avail_case
+  } else {
+    if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
+        any(case != floor(case)) || !all(case %in% avail_case))
+      stop("`case` must be one or more of: ",
+           paste(avail_case, collapse = ", "),
+           "\n\nThe possible model cases are as follows :\n",
+           paste(object$case_model, collapse = "\n"), call. = FALSE)
+    case <- as.integer(unique(case))
   }
-  case   <- as.integer(case)
+  
   n_case <- length(case)
   
   

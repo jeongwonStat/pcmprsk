@@ -2,134 +2,274 @@
 % Please edit documentation in R/pcrr.R
 \name{plot.pcrr}
 \alias{plot.pcrr}
-\title{Diagnostic Plots for a Fitted Parametric Competing Risks Regression Model}
+\title{Diagnostic Plots for a Parametric Competing Risks Regression Model}
 \usage{
 \method{plot}{pcrr}(
   x,
   case = NULL,
   event = NULL,
-  color = NULL,
-  lty = NULL,
-  lwd = 2,
+  baseline = TRUE,
+  coxsnell = TRUE,
+  col.par = "black",
+  col.semi = "blue",
+  lty.par = 1,
+  lty.semi = 2,
   ref.col = "red",
   ref.lty = 2,
+  shade.col = "gray93",
   conf.int = FALSE,
-  xlab = "Cox-Snell residual",
-  ylab = "Estimated cumulative hazard",
-  xlim = NULL,
   ylim = NULL,
+  lim.coxsnell = NULL,
+  xmin = 0,
+  xmax = NULL,
+  xlab = "Time",
+  ylab = "Baseline Cumulative Hazard",
+  xlab.coxsnell = "Cox-Snell Residual",
+  ylab.coxsnell = "Estimated Cumulative Hazard",
   legend = TRUE,
-  legend.pos = "topleft",
+  legend.pos = c("bottomright", "topleft"),
+  legend.title = NULL,
+  lwd = 2,
   main = NULL,
+  n.grid = 300,
+  mfrow = NULL,
+  common.ylim = FALSE,
   ask = NULL,
   ...
 )
 }
 \arguments{
-\item{x}{an object of class \code{"pcrr"}, fitted with the data retained so
-that \code{x$x}, \code{x$delta} and \code{x$z} are available.}
+\item{x}{an object of class \code{"pcrr"}. It must store the original data
+(components \code{x}, \code{delta} and \code{z}); otherwise an error is
+raised.}
 
-\item{case}{integer vector of model cases to draw, using the case numbers
-shown by \code{\link{print.pcrr}}. If \code{NULL} (default) the first case
-is used and a message is issued when more than one is available. Several
-cases are overlaid and distinguished by line type.}
+\item{case}{integer vector selecting model cases, numbered as shown by
+\code{\link{print.pcrr}}. Cases are drawn in the order given and
+duplicates are dropped. If \code{NULL} (default) every case is drawn.}
 
-\item{event}{vector of event types to draw, using the codes in
-\code{x$mapping}. If \code{NULL} (default) every event is drawn, one page
-each.}
+\item{event}{vector of event codes, as stored in \code{x$mapping}. If
+\code{NULL} (default) every event is drawn. Supplying \code{event} keeps
+only those events, in the order given; the case selection is unaffected.}
 
-\item{color}{line colors for the model cases. Defaults to \code{"black"} for
-a single case and to distinct colors when several are overlaid.}
+\item{baseline, coxsnell}{logical; draw the baseline screen and the
+Cox--Snell screen respectively. Both default to \code{TRUE}, and at least
+one must be. A screen that is switched off is not computed either
+(\code{baseline = FALSE} skips the semiparametric fits) and has no
+component in the returned list.}
 
-\item{lty}{line types for the model cases. Defaults to
-\code{seq_len(n_case)}.}
+\item{col.par}{colour of the parametric curve on the baseline screen, and of
+the Nelson--Aalen curve and its limits on the Cox--Snell screen.}
 
-\item{lwd}{line width for the Nelson-Aalen curves.}
+\item{col.semi}{colour of the semiparametric curve on the baseline screen.}
 
-\item{ref.col}{color of the 45-degree reference line. Default \code{"red"}.}
+\item{lty.par, lty.semi}{line types of the parametric and semiparametric
+curves on the baseline screen.}
 
-\item{ref.lty}{line type of the 45-degree reference line. Default 2.}
+\item{ref.col, ref.lty}{colour and line type of the 45-degree line on the
+Cox--Snell screen.}
 
-\item{conf.int}{logical value. If \code{TRUE}, pointwise confidence limits
-for the Nelson-Aalen estimate are added. Default is \code{FALSE}.}
+\item{shade.col}{fill colour of the region in which the 45-degree line is
+exact. \code{NA} suppresses the shading; the dotted line at its edge is
+still drawn.}
 
-\item{xlab, ylab}{axis labels.}
+\item{conf.int}{logical; add pointwise limits at level 0.95, as dotted
+lines, to the Nelson--Aalen estimate on the Cox--Snell screen. The limits
+then enter the automatic axis range. Default \code{FALSE}.}
 
-\item{xlim, ylim}{axis limits. If \code{NULL}, a common square range is
-computed from the residuals so that the reference line is a true diagonal.}
+\item{ylim}{y-axis limits applied to every baseline panel. If \code{NULL}
+(default) each panel runs from 0 to 1.05 times the largest finite value
+of its two curves on the time axis; see also \code{common.ylim}.}
 
-\item{legend}{logical value indicating whether a legend is drawn.}
+\item{lim.coxsnell}{limits of the Cox--Snell panels, applied to both axes so
+that the 45-degree line runs corner to corner. If \code{NULL} (default)
+each panel runs from 0 to the largest event residual or estimated
+cumulative hazard, the upper limit included when \code{conf.int = TRUE};
+see also \code{common.ylim}.}
 
-\item{legend.pos}{position of the legend, passed to
-\code{\link[graphics]{legend}}. Default \code{"topleft"}.}
+\item{xmin, xmax}{time range of the baseline panels. \code{xmin} must be
+non-negative and \code{xmax} larger than it; \code{xmax = NULL} (default)
+means \code{x$maxtime}, the end of follow-up, where the semiparametric
+curve ends. Neither affects the Cox--Snell screen.}
 
-\item{main}{main title. If \code{NULL}, the event being plotted is used.
-A vector is recycled over the selected events.}
+\item{xlab, ylab}{axis labels of the baseline panels; \code{ylab} also
+appears in the header of the baseline screen. Under a PO link the curve
+is the baseline odds rather than a cumulative hazard, and the label is
+not adapted to the link, so set it when PO cases are drawn.}
 
-\item{ask}{logical value. If \code{TRUE}, the user is prompted before each
-new page. If \code{NULL} (default), prompting is enabled only when several
-events are drawn on an interactive single-panel device.}
+\item{xlab.coxsnell, ylab.coxsnell}{axis labels of the Cox--Snell panels;
+\code{xlab.coxsnell} also appears in the header of the Cox--Snell screen.}
 
-\item{...}{additional graphical parameters passed to
-\code{\link[graphics]{plot}}.}
+\item{legend}{logical; draw a legend on each panel.}
+
+\item{legend.pos}{legend positions as \code{\link[graphics]{legend}}
+keywords, the first for the baseline screen and the second for the
+Cox--Snell screen; a single value serves both. The defaults suit a rising
+baseline and a residual curve on or below the diagonal.}
+
+\item{legend.title}{title of the legends; \code{NULL} (default) for none.}
+
+\item{lwd}{line width of the curves on both screens.}
+
+\item{main}{title(s) replacing the case label in the screen headers,
+recycled over the selected cases so that each element titles one case's
+screens. If \code{NULL} (default) the case label is used. Panel titles
+are not affected.}
+
+\item{n.grid}{number of time points, from \code{xmin} to \code{xmax}, at
+which the parametric curve is evaluated; at least 2. Default 300. The
+semiparametric curve is a step function and is drawn at its own jump
+times.}
+
+\item{mfrow}{panel grid of a screen as \code{c(rows, columns)}. If
+\code{NULL} (default), a grid already set with \code{par(mfrow = )} is
+used together with the current margins; failing that, the grid has
+\code{floor(sqrt(n))} rows and enough columns for the \code{n} selected
+events.}
+
+\item{common.ylim}{logical; give all panels of a screen the same range,
+the y-axis on the baseline screen and both axes on the Cox--Snell screen,
+instead of scaling each panel on its own. Ignored where \code{ylim} or
+\code{lim.coxsnell} fixes the range. Default \code{FALSE}.}
+
+\item{ask}{logical; prompt before each new page. If \code{NULL} (default)
+it is \code{TRUE} when more than one page is drawn on an interactive
+device (see \code{\link[grDevices]{dev.interactive}}).}
+
+\item{...}{further graphical parameters passed to
+\code{\link[graphics]{plot.default}} when each panel is set up, such as
+\code{cex.axis} or \code{las}; they do not reach the curves or the
+legends.}
 }
 \value{
-Invisibly, a list with one element per selected case, each holding a list of
-per-event data frames of the residuals (\code{resid}), the status indicator
-used in the risk set (\code{status}) and the classification
-(\code{type}). The plots are produced as a side effect.
+Invisibly, a list with one element per selected case, named by its model
+label. Each is a list with one element per selected event, named after the
+event code (e.g. \code{"event 1"}), holding a component for each screen
+drawn:
+\describe{
+\item{\code{baseline}}{a list with \code{link} (\code{"PH"} or
+\code{"PO"}), \code{time} (the evaluation grid), \code{parametric}
+(\eqn{\widehat u_k} on that grid) and \code{semiparametric} (the step
+function as a list with \code{time} and \code{u}, or \code{NULL} if it
+could not be computed).}
+\item{\code{resid}}{a data frame with one row per subject: \code{resid},
+the residual (\code{Inf} for competing failures and wherever the model
+is not defined); \code{status}, 1 for an event of this cause and 0
+otherwise; \code{type}, one of \code{"event"}, \code{"censored"} and
+\code{"competing"}; and \code{L}, the truncation point \eqn{L_i}
+(\code{Inf} when the fitted baseline is unbounded). Events dropped
+from the plot are kept here.}
+}
+The Nelson--Aalen curves are not returned. The plots are produced as a
+side effect.
 }
 \description{
-Draws Cox-Snell residual plots for a fitted \code{"pcrr"} model, one page per
-event type.
+Up to two diagnostic screens per model case, each with one panel per
+selected event. The baseline screen draws the fitted baseline
+\eqn{u_k(t)} against a semiparametric estimate that assumes the same link:
+Fine--Gray under proportional hazards (PH), a proportional odds
+subdistribution model under proportional odds (PO). The Cox--Snell screen
+draws the Nelson--Aalen estimate of the cumulative hazard of the Cox--Snell
+residuals against the 45-degree line. For each case the baseline screen
+comes first; either screen can be switched off with \code{baseline} or
+\code{coxsnell}.
 }
 \details{
-\emph{Cox-Snell residuals.} For event type \eqn{k} the fitted cumulative
-subdistribution hazard of subject \eqn{i} is
-\deqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)
-  = -\log\{1-\widehat{F}_k(X_i;\mathbf{Z}_i)\}
-  = \frac{1}{\widehat{\alpha}_k}
-    \log\{1+\widehat{\alpha}_k
-    \exp(\mathbf{Z}_i^{\top}\widehat{\boldsymbol{\beta}}_k)
-    \widehat{u}_k(X_i)\},}
-which reduces to
-\eqn{\exp(\mathbf{Z}_i^{\top}\widehat{\boldsymbol{\beta}}_k)\widehat{u}_k(X_i)}
-as \eqn{\widehat{\alpha}_k \to 0}. If the model is correctly specified these
-residuals behave like a censored sample from the unit exponential
-distribution, so the Nelson-Aalen estimate of their own cumulative hazard
-should follow the 45-degree line.
-
-\emph{Risk sets.} The residuals are those of the improper random variable
-underlying the subdistribution hazard (Fine and Gray, 1999), in which a
-subject failing from a competing cause remains at risk for event \eqn{k}
-indefinitely. Each subject therefore enters the Nelson-Aalen estimate as
-\itemize{
-\item an \emph{event} at \eqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)} if the
-subject failed from cause \eqn{k};
-\item \emph{censored} at \eqn{\widehat{\Lambda}_k(X_i;\mathbf{Z}_i)} if the
-subject was censored without any event;
-\item \emph{censored at infinity} if the subject failed from a competing
-cause.
+\strong{Baseline screen: against a semiparametric fit of the same link.}
+For each event the fitted \eqn{u_k(t)} is drawn against a semiparametric
+estimate of the same quantity, and \emph{which} estimate is used follows the
+link that the case fixes:
+\describe{
+\item{PH (\eqn{\alpha_k = 0})}{\eqn{\Lambda^{CI}_k(t;\mathbf 0) = u_k(t)},
+so \eqn{u_k(t)} is the baseline cumulative subdistribution hazard and
+the reference is its Breslow-type estimate from
+\code{\link[cmprsk]{crr}} (Fine and Gray, 1999), as in Jeong and Fine
+(2007, Fig. 2).}
+\item{PO (\eqn{\alpha_k = 1})}{\eqn{F_k/(1-F_k) =
+    e^{\mathbf z^{\top}\boldsymbol\beta_k}u_k(t)}, so the baseline odds is
+\eqn{u_k(t)} itself, and the reference is the \code{Baseline} column of
+the \code{cum} component of \code{\link[timereg]{prop.odds.subdist}}.}
 }
-Treating a competing failure as censored at its own residual, as one would
-for cause-specific hazard models, removes it from later risk sets and is not
-appropriate here.
+Both estimators therefore return \eqn{u_k(t)} directly and no transformation
+is applied to either curve. Both are evaluated at
+\eqn{\mathbf z = \mathbf 0}, so no profile has to be chosen, and both are
+fitted to cause \eqn{k} alone with the covariates of the parametric model.
+\code{prop.odds.subdist()} draws random numbers, breaking tied event times
+with random jitter, so it is run with a fixed seed and the user's random
+number stream is restored afterwards: the curve is reproducible and
+\code{.Random.seed} is left as it was.
 
-\emph{Impropriety.} Because the fitted cumulative incidence function may be
-improper, \eqn{\widehat{\Lambda}_k(\infty;\mathbf{Z}_i)} can be finite. The
-residuals then carry a point mass at infinity equal to the fitted cure
-fraction, and the Nelson-Aalen curve is only estimable over the range in
-which events are observed. Departures from the 45-degree line should be read
-over that range only.
-}
-\references{
-Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
-subdistribution of a competing risk. \emph{Journal of the American
-Statistical Association} 94, 496--509.
+Matching the estimator to the link is what keeps this panel a check on the
+\emph{baseline alone}. Comparing a proportional odds fit against
+\code{crr}, which assumes proportional hazards, would put a second source
+of discrepancy into the same picture and leave a gap uninterpretable.
+
+This is the primary diagnostic: its reference is nonparametric in the
+baseline and covers the whole observed range. Curvature throughout points at
+a misspecified baseline; a gap opening only in the tail points at the
+extrapolation rather than the fit. The semiparametric curve ends at the end
+of follow-up, so with a larger \code{xmax} only the parametric curve
+continues. For cumulative incidence curves at chosen covariate profiles see
+\code{\link{predict.pcrr}}.
+
+\strong{Cox--Snell screen.}
+The residual of subject \eqn{i} for cause \eqn{k} is the fitted cumulative
+subdistribution hazard at the observed time,
+\eqn{r_i = \alpha_k^{-1}
+\log\{1 + \alpha_k e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}
+\widehat{u}_k(x_i)\}}, which is
+\eqn{e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}\widehat u_k(x_i)}
+when \eqn{\alpha_k = 0}. It counts as an event for a failure from cause
+\eqn{k} and as censored otherwise. Subjects failing from a competing cause
+are censored at \eqn{+\infty}, so they never leave the risk set, as the
+subdistribution hazard requires. The Nelson--Aalen estimate of the
+cumulative hazard of the residuals is then drawn as a step function
+jumping at the event residuals, with pointwise limits if
+\code{conf.int = TRUE}.
+
+\strong{Where the 45-degree line is valid.} If the residuals were
+\eqn{\mathrm{Exp}(1)} the curve would follow the diagonal. They are not
+when the fitted baseline is bounded, \eqn{\widehat u_k(\infty) < \infty}:
+the fitted cumulative incidence is then improper (a cure fraction exists),
+so subject \eqn{i}'s residual is \eqn{\mathrm{Exp}(1)} only up to
+\eqn{L_i = \widehat\Lambda^{CI}_k(\infty; \mathbf{z}_i)}, beyond which its
+remaining mass, \eqn{e^{-L_i} = 1 - \widehat F_k(\infty; \mathbf{z}_i)},
+sits at \eqn{+\infty}. Since \eqn{L_i} varies with the covariates the
+residuals are not identically distributed and no single reference exists.
+On \eqn{0 \le u < \min_i L_i} nothing has been relocated yet and the
+diagonal is exact; that region is shaded, its edge is marked by a dotted
+line whose position the legend reports, and \strong{the plot should be
+read there and not beyond}. Past it the curve bends below the diagonal even
+when the model is correct. When the fitted baseline is unbounded every
+\eqn{L_i} is infinite: nothing is shaded and the diagonal is exact
+throughout.
+
+No p-value is reported and none should be attached. Tests built from fitted
+residuals treated as if they were the true errors understate significance
+systematically (Durbin, in the discussion of Cox and Snell, 1968, p.269),
+and adjusting the residuals does not help because the adjustment leaves
+their correlation unchanged (Loynes, 1969, p.105).
+
+\strong{Layout.} The selected cases are drawn in turn, each case's
+baseline screen followed by its Cox--Snell screen. A screen is one graphics
+page with a panel per selected event, titled by the event code and its
+link, under a header giving the case label (or \code{main}) and, beneath
+it, the quantity shown (\code{ylab} or \code{xlab.coxsnell}). If the
+events do not fit the grid (see \code{mfrow}) the screen continues on
+further pages, each with the header repeated. Graphical parameters are
+restored on exit.
+
+\strong{Incomplete panels.} A case whose optimisation did not converge is
+still drawn, with a warning that its curves should not be interpreted. If
+a semiparametric fit fails, a warning is issued and the panel shows the
+parametric curve alone; a warning is also issued when \code{crr()} does
+not converge. An observed event whose residual is not finite, because the
+fitted model is not defined at its time, is dropped from the Cox--Snell
+panel with a warning, and a panel left without events shows only a note.
 }
 \seealso{
 \code{\link{pcrr}},
 \code{\link{print.pcrr}},
+\code{\link{summary.pcrr}},
 \code{\link{predict.pcrr}},
-\code{\link{plot.predict.pcrr}}
+\code{\link{cure.pcrr}}
 }
