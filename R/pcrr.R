@@ -2876,7 +2876,9 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
   
   if (!is.numeric(xmin) || length(xmin) != 1 || !is.finite(xmin) || xmin < 0)
     stop("`xmin` must be a single non-negative number.", call. = FALSE)
-  if (is.null(xmax)) xmax <- x$maxtime
+  if (is.null(xmax))
+    xmax <- suppressWarnings(max(unlist(lapply(lpos, function(l)
+      lapply(epos, function(e) x$pred[[l]][[e]][, 1]))), na.rm = TRUE))
   if (!is.numeric(xmax) || length(xmax) != 1 || !is.finite(xmax) ||
       xmax <= xmin)
     stop("`xmax` must be a single number larger than `xmin`.", call. = FALSE)
