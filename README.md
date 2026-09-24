@@ -155,6 +155,83 @@ fit_logi <- pcrr(ftime = time_vector_data,
 
 The three models provide different levels of flexibility.
 
+
+## Generic Functions
+ 
+```R
+fit <- pcrr(...)
+```
+ 
+Throughout this section, `fit` denotes a model fitted as above.
+ 
+### `print()`: Model Assumption Tests
+ 
+```R
+print(fit)
+```
+ 
+`pcrr()` first fits the GOR model, estimating the link parameter $\alpha_k$ for each event, and then tests whether each event is consistent with the proportional hazards (PH, $\alpha_k = 0$) and proportional odds (PO, $\alpha_k = 1$) assumptions. `print()` reports these test results and lists the resulting model cases. A model case is a combination of the assumptions retained for the events, and the `case` argument used below refers to the case numbers shown here.
+ 
+### `summary()`: Fitted Model Cases
+ 
+```R
+summary(fit)
+```
+ 
+For each model case, the model is refitted with the assumption of each event fixed. `summary()` reports the maximum likelihood estimates of each case, together with Wald tests based on the observed information matrix.
+ 
+```R
+summary(fit, case = 1)
+```
+ 
+Specifying `case` prints the results for the selected cases only.
+ 
+### `plot()`: Baseline and Cox–Snell Residual Plots
+ 
+```R
+plot(fit)
+```
+ 
+For each model case, `plot()` draws two diagnostic plots, with one panel per event:
+ 
+1. **Baseline plot.** The fitted parametric baseline $u_k(t)$ is compared with a semiparametric estimate under the same assumption: `crr()` from **cmprsk** for events assumed to be PH, and `prop.odds.subdist()` from **timereg** for events assumed to be PO. Both estimators return $u_k(t)$ itself, that is, the baseline cumulative subdistribution hazard under PH and the baseline odds under PO, so the two curves are compared directly without any transformation.
+2. **Cox–Snell residual plot.** The Nelson–Aalen estimate of the cumulative hazard of the Cox–Snell residuals is drawn against the 45-degree line. 
+```R
+plot(fit, case = 1, event = c(1, 2))
+```
+ 
+Specifying `case` and `event` draws only the selected cases and events. Either plot can be turned off with `baseline = FALSE` or `coxsnell = FALSE`.
+ 
+### `predict()`: Predicted CIFs
+ 
+```R
+pred <- predict(fit, cov = user_select_cov_matrix)
+```
+ 
+```R
+print(pred)
+```
+ 
+`print()` displays the predicted CIFs for each case and event at the covariate values given in `cov`.
+ 
+```R
+plot(pred)
+```
+ 
+For each case, `plot()` draws the predicted CIFs and then the corresponding subdistribution hazards, with one panel per event and one curve per covariate profile (row of `cov`). Turning points of the subdistribution hazard are marked when they exist. Use `hazard = FALSE` to draw the CIFs only.
+ 
+### `cure()`: Cure Fractions
+ 
+```R
+cf <- cure(fit, cov = user_select_cov_matrix)
+```
+ 
+```R
+print(cf)
+```
+ 
+`cure()` estimates the long-term event probabilities and cure fractions implied by the fitted model at the covariate values given in `cov`, and `print()` displays them.
+ 
 ---
 
 ## Development
