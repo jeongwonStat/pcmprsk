@@ -207,7 +207,9 @@ Specifying `case` and `event` draws only the selected cases and events. Either p
 ```R
 pred <- predict(fit, cov = user_select_cov_matrix)
 ```
+
 The `case` and `event` arguments can also be specified to select the cases and events to predict.
+
 ```R
 print(pred)
 ```
@@ -225,7 +227,9 @@ For each case, `plot()` draws the predicted CIFs and then the corresponding subd
 ```R
 cf <- cure(fit, cov = user_select_cov_matrix)
 ```
+
 The `case` and `event` arguments can also be specified to select the cases and events to predict.
+
 ```R
 print(cf)
 ```
