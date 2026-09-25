@@ -11,7 +11,8 @@
 
 \item{cov}{numeric matrix of covariate values. Rows correspond to
 covariate profiles and columns correspond to covariates included
-in the fitted model.}
+in the fitted model. A vector is accepted and is reshaped row-wise when
+its length is a multiple of the number of covariates.}
 
 \item{times}{optional vector of time points at which predictions are
 evaluated. If omitted, 200 equally spaced time points over the
@@ -42,11 +43,12 @@ column of predicted subdistribution hazard per covariate profile. Beyond a
 finite \code{t_boundary} the entries are \code{NA} rather than zero.}
 \item{\code{xmh_base}}{turning point of the baseline hazard under
 \code{"gompertz3"} and \code{"logistic"} when one exists at a positive
-time, and \code{NULL} otherwise. It is always \code{NULL} under
+time, and \code{NA} otherwise. It is always \code{NA} under
 \code{"gompertz2"}, whose baseline hazard is monotone.}
-\item{\code{xmh_obs}}{named vector of profile-specific turning points of
-the subdistribution hazard, found numerically; \code{NULL} where none
-exists, and always \code{NULL} under \code{"gompertz2"}.}
+\item{\code{xmh_obs}}{vector of profile-specific turning points of the
+subdistribution hazard, one per row of \code{cov} and found numerically,
+with \code{NA} for a profile that has none. Every entry is \code{NA}
+under \code{"gompertz2"}.}
 \item{\code{t_boundary}}{named vector of the times at which
 \eqn{1+\widehat{\alpha}_k\exp(\mathbf{z}^{\top}\boldsymbol{\widehat{\beta}}_k)
   \widehat{u}_k(t)} reaches zero, and \code{Inf} where it does not. Since a
@@ -54,6 +56,11 @@ model case fixes \eqn{\alpha_k} at 0 or 1, that quantity is at least 1
 throughout and these entries are \code{Inf}; a finite value can arise only
 in the unconstrained fit.}
 }
+
+\code{converged} and \code{message} are lists indexed by selected case,
+giving the convergence status and optimizer message of each case's fit; a
+case that did not converge is still predicted, and flagged when printed or
+plotted.
 
 The remaining components are scalar: \code{distribution}, \code{eta} (the
 fitted \eqn{\eta_k}, nested in the same way, for \code{"gompertz3"} only and

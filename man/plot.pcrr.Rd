@@ -86,10 +86,11 @@ each panel runs from 0 to the largest event residual or estimated
 cumulative hazard, the upper limit included when \code{conf.int = TRUE};
 see also \code{common.ylim}.}
 
-\item{xmin, xmax}{time range of the baseline panels. \code{xmin} must be
-non-negative and \code{xmax} larger than it; \code{xmax = NULL} (default)
-means \code{x$maxtime}, the end of follow-up, where the semiparametric
-curve ends. Neither affects the Cox--Snell screen.}
+\item{xmin, xmax}{range of the x-axis, shared by every panel on both pages.
+\code{xmin} must be a single non-negative number. If \code{xmax} is
+\code{NULL} (default), the largest prediction time of the selected cases
+is used. Otherwise, \code{xmax} must be a single finite number larger than
+\code{xmin}.}
 
 \item{xlab, ylab}{axis labels of the baseline panels; \code{ylab} also
 appears in the header of the baseline screen. Under a PO link the curve

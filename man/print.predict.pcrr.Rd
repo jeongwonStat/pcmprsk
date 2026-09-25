@@ -18,11 +18,13 @@ The function prints the prediction information and returns the input object invi
 }
 \description{
 Prints a summary of predicted cumulative incidence functions produced by
-\code{\link{predict.pcrr}}, including event type, maximum hazard rate time
-(for \code{"gompertz3"} and \code{"logistic"}), and predicted values.
+\code{\link{predict.pcrr}}, for each selected case and event: the hazard
+turning points (for \code{"gompertz3"} and \code{"logistic"}) and the
+predicted values. A case that did not converge is flagged before its
+output.
 }
 \seealso{
 \code{\link{pcrr}},
-\code{\link{plot.pcrr}},
-\code{\link{predict.pcrr}}
+\code{\link{predict.pcrr}},
+\code{\link{plot.predict.pcrr}}
 }

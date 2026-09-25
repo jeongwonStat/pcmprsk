@@ -28,7 +28,8 @@ type in the fitted model is used. Reporting every cause is the sensible
 default here, since all of them are estimated from the same likelihood.}
 }
 \value{
-A numeric vector containing the estimated cure fractions.
+An object whose class depends on the method; for a \code{"pcrr"} fit see
+\code{\link{cure.pcrr}} below.
 
 An object of class \code{"cure.pcrr"}. The first three components are nested
 lists indexed first by selected model case, named by the case labels, and
@@ -47,8 +48,10 @@ given above.}
 }
 
 The remaining components are \code{case} (the indices selected),
-\code{case_model} (the labels of all available cases) and \code{event} (the
-event codes selected).
+\code{case_model} (the labels of all available cases), \code{event} (the
+event codes selected), and \code{converged} and \code{message}, lists
+indexed by selected case giving the convergence status and optimizer
+message of each case's fit.
 
 Because the estimate is a model-based extrapolation beyond the observed
 follow-up, it is a statement about the fitted distribution rather than an

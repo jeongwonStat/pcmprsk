@@ -48,9 +48,10 @@ If both \code{dist} and \code{distribution} are specified,
 \code{na.omit}; \code{na.fail} is also supported.}
 
 \item{gtol}{relative convergence tolerance (\code{rel.tol}) used by
-\code{nlminb()}. The default value is \code{1e-6}.}
+\code{nlminb()}. The default value is \code{1e-10}.}
 
-\item{maxiter}{maximum number of optimization iterations. internally, \code{eval.max} is set to \code{3 * maxiter}.}
+\item{maxiter}{maximum number of optimization iterations. Internally,
+\code{eval.max} is set to \code{3 * maxiter}.}
 
 \item{init}{a user-specified initial parameter vector.
 See \code{\link{pcrr-parameter-order}} for the parameter ordering.}
@@ -92,7 +93,8 @@ stored according to the parameter ordering described in \code{\link{pcrr-paramet
 \item{\code{cov_names}}{names of the covariates.}
 \item{\code{mapping}}{mapping between the original event labels and the internal event codes.}
 \item{\code{maxtime}}{maximum observed follow-up time.}
-\item{\code{case_all}}{the alpha values for all possible model assumption cases.}
+\item{\code{case_all}}{matrix with one row per model case and one column
+per cause, holding the fixed \eqn{\alpha_k}: 0 for PH and 1 for PO.}
 \item{\code{case_model}}{labels describing all possible model assumption cases.}
 \item{\code{mle_case_all}}{the results of \code{nlminb()} optimization for all possible model assumption cases.}
 \item{\code{sco_case_all}}{score vectors evaluated at the MLEs for all possible model assumption cases.}
@@ -128,6 +130,11 @@ when \eqn{\rho_k < 0} and \eqn{\eta_k < -1}, in which case it peaks at
 \eqn{\frac{1}{\rho_k} \log(-\frac{1}{\eta_k})}. Fitting \code{"gompertz3"} to data with no
 unimodal hazard usually makes the extra parameter unidentifiable, which shows
 up as extreme estimates and a singular information matrix.
+
+\emph{Notation.} Haile et al. (2016) write the three baseline parameters as
+\eqn{(\alpha, \beta, \eta)}. They appear here as \code{rho}, \code{tau} and
+\code{eta}, because \code{alpha} and \code{beta} already denote the link
+parameter and the regression coefficients of Jeong and Fine (2007).
 
 With \code{distribution = "logistic"}, the baseline is the three-parameter
 modified logistic model (Cheng, 2009), with cumulative baseline function
@@ -165,10 +172,6 @@ real \eqn{\alpha_k}. Note, however, that when \eqn{\alpha_k < 0}, the CIF is def
 \eqn{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k) u_k(t) \geq 0}.
 Once this quantity becomes negative, the CIF is no longer defined for
 subsequent values of \eqn{t}.
-In \code{\link{predict.pcrr}}, the CIF is set to 1 from the first time
-point at which this quantity becomes negative and remains at 1 thereafter,
-whereas \code{\link{cure.pcrr}} returns \code{NA} for the corresponding
-cure fraction.
 
 Note that this situation cannot arise in the fits that are reported. Every
 model case fixes \eqn{\alpha_k} at 0 or 1 (see \emph{Model cases} below),
@@ -176,11 +179,6 @@ so \eqn{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k) u_k(t)
 \geq 1} throughout and no finite boundary exists. The discussion above
 therefore applies to the unconstrained fit used for the assumption tests,
 whose coefficients are returned in \code{coef}.
-
-\emph{Notation.} Haile et al. (2016) write the three baseline parameters as
-\eqn{(\alpha, \beta, \eta)}. They appear here as \code{rho}, \code{tau} and
-\code{eta}, because \code{alpha} and \code{beta} already denote the link
-parameter and the regression coefficients of Jeong and Fine (2007).
 
 \emph{Model cases.} Only two values of \eqn{\alpha_k} admit a direct
 reading: at \eqn{\alpha_k = 0} the quantity
@@ -210,13 +208,25 @@ lies between 1 and \eqn{2^K}; the first cause varies fastest in the
 enumeration. There is no argument for specifying a link by hand, since a
 link outside the admissible set is one the data have rejected.
 
-If both hypotheses are rejected for some cause, or if neither can be
-tested because the standard error of \eqn{\widehat{\alpha}_k} is not
-finite, no interpretable case survives for that cause and hence none
-survives at all. \code{pcrr} then stops with an error naming the causes
-responsible, and no object is returned. Because all causes enter one
-likelihood, the offending cause cannot simply be dropped and the others
-reported.
+\code{pcrr} stops with an error, and returns no object, when no model
+case survives: for some cause both hypotheses are rejected, one cannot be
+tested and the other is rejected, or neither can be tested because the
+standard error of \eqn{\widehat{\alpha}_k} is not finite. The error names
+the causes responsible. It also stops, before any test, if the
+unconstrained fit does not converge or its Hessian is singular.
+
+\emph{Diagnostics.} \code{\link{plot.pcrr}} draws two screens for each
+model case. The first overlays the fitted baseline \eqn{u_k(t)} on a
+semiparametric estimate that assumes the same link, Fine--Gray under PH and
+a proportional odds subdistribution model under PO, so that a gap between
+the curves points at the baseline alone; this is the primary check. The
+second shows Cox--Snell residuals, which are informative only below the
+shaded limit \eqn{\min_i L_i}. When the fitted cumulative incidence is
+improper, each residual follows \eqn{\mathrm{Exp}(1)} only up to a
+subject-specific limit \eqn{L_i}, so beyond the smallest one the
+45-degree line no longer applies. Fitted cumulative incidence and
+subdistribution hazard curves at chosen covariate profiles are produced by
+\code{\link{predict.pcrr}} and drawn by \code{\link{plot.predict.pcrr}}.
 
 Model parameters are estimated by maximum likelihood using
 \code{\link[stats]{nlminb}}, with standard errors obtained from the inverse
@@ -245,14 +255,13 @@ event <- ifelse(time == t1, 1, ifelse(time == t2, 2, 0))
 
 fit1 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2))
 print(fit1)
-fit1$case_model
 
 summary(fit1, case = c(1, 3))
 
-pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = 1, event = 1)
+pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = c(1, 2))
 print(pred1)
 
-plot(pred1)
+plot(pred1, case = 1)
 
 cure(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)))
 
@@ -290,8 +299,12 @@ cure(fit2, cov = rbind(c(0, 0.15), c(1, -0.30), c(0, 0.70)))
 
 }
 \references{
-Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
-cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
+Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
+Using a Novel Three-Parameter Logistic Function.
+\emph{The International Journal of Biostatistics}, 5(1), Article 29.
+
+Cox, D. R. and Snell, E. J. (1968). A general definition of residuals.
+\emph{Journal of the Royal Statistical Society, Series B}, 30(2), 248--275.
 
 Dabrowska, D. M. and Doksum, K. A. (1988). Estimation and testing in a two-sample
 generalized odds-rate model. \emph{Journal of the American Statistical Association},
@@ -301,9 +314,11 @@ Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompert
 distribution for survival data with competing risks, with an application to
 breast cancer data. \emph{Journal of Applied Statistics}, 43(12), 2239--2253.
 
-Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
-Using a Novel Three-Parameter Logistic Function.
-\emph{The International Journal of Biostatistics}, 5(1), Article 29.
+Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
+cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
+
+Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
+\emph{Journal of the Royal Statistical Society, Series B}, 31(1), 103--106.
 }
 \seealso{
 \code{\link{print.pcrr}},

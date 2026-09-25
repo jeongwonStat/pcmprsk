@@ -20,9 +20,10 @@ object invisibly.
 }
 \description{
 Prints a summary of estimated cure fractions produced by
-\code{\link{cure.pcrr}}, including the estimated cure fraction,
-its classification, and the boundary time of the cumulative incidence
-function when a finite boundary exists.
+\code{\link{cure.pcrr}}, for each selected case and event: the estimated
+cure fraction of each profile, its classification, and the boundary time
+of the cumulative incidence function when a finite boundary exists. A case
+that did not converge is flagged before its output.
 }
 \seealso{
 \code{\link{pcrr}},

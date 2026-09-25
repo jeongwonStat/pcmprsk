@@ -31,6 +31,11 @@
 #' unimodal hazard usually makes the extra parameter unidentifiable, which shows
 #' up as extreme estimates and a singular information matrix.
 #' 
+#' \emph{Notation.} Haile et al. (2016) write the three baseline parameters as
+#' \eqn{(\alpha, \beta, \eta)}. They appear here as \code{rho}, \code{tau} and
+#' \code{eta}, because \code{alpha} and \code{beta} already denote the link
+#' parameter and the regression coefficients of Jeong and Fine (2007).
+#' 
 #' With \code{distribution = "logistic"}, the baseline is the three-parameter
 #' modified logistic model (Cheng, 2009), with cumulative baseline function
 #' \deqn{u_k(t) = -\log\left\{1 - \dfrac{p_k e^{b_k(t-c_k)} - p_k e^{-b_k c_k}}
@@ -67,10 +72,6 @@
 #' \eqn{1 + \alpha_k \exp(\mathbf{Z}^{\top}\boldsymbol{\beta}_k) u_k(t) \geq 0}.
 #' Once this quantity becomes negative, the CIF is no longer defined for
 #' subsequent values of \eqn{t}.
-#' In \code{\link{predict.pcrr}}, the CIF is set to 1 from the first time
-#' point at which this quantity becomes negative and remains at 1 thereafter,
-#' whereas \code{\link{cure.pcrr}} returns \code{NA} for the corresponding
-#' cure fraction.
 #'
 #' Note that this situation cannot arise in the fits that are reported. Every
 #' model case fixes \eqn{\alpha_k} at 0 or 1 (see \emph{Model cases} below),
@@ -79,10 +80,6 @@
 #' therefore applies to the unconstrained fit used for the assumption tests,
 #' whose coefficients are returned in \code{coef}.
 #'
-#' \emph{Notation.} Haile et al. (2016) write the three baseline parameters as
-#' \eqn{(\alpha, \beta, \eta)}. They appear here as \code{rho}, \code{tau} and
-#' \code{eta}, because \code{alpha} and \code{beta} already denote the link
-#' parameter and the regression coefficients of Jeong and Fine (2007).
 #'
 #' \emph{Model cases.} Only two values of \eqn{\alpha_k} admit a direct
 #' reading: at \eqn{\alpha_k = 0} the quantity
@@ -112,13 +109,25 @@
 #' enumeration. There is no argument for specifying a link by hand, since a
 #' link outside the admissible set is one the data have rejected.
 #'
-#' If both hypotheses are rejected for some cause, or if neither can be
-#' tested because the standard error of \eqn{\widehat{\alpha}_k} is not
-#' finite, no interpretable case survives for that cause and hence none
-#' survives at all. \code{pcrr} then stops with an error naming the causes
-#' responsible, and no object is returned. Because all causes enter one
-#' likelihood, the offending cause cannot simply be dropped and the others
-#' reported.
+#' \code{pcrr} stops with an error, and returns no object, when no model
+#' case survives: for some cause both hypotheses are rejected, one cannot be
+#' tested and the other is rejected, or neither can be tested because the
+#' standard error of \eqn{\widehat{\alpha}_k} is not finite. The error names
+#' the causes responsible. It also stops, before any test, if the
+#' unconstrained fit does not converge or its Hessian is singular.
+#'
+#' \emph{Diagnostics.} \code{\link{plot.pcrr}} draws two screens for each
+#' model case. The first overlays the fitted baseline \eqn{u_k(t)} on a
+#' semiparametric estimate that assumes the same link, Fine--Gray under PH and
+#' a proportional odds subdistribution model under PO, so that a gap between
+#' the curves points at the baseline alone; this is the primary check. The
+#' second shows Cox--Snell residuals, which are informative only below the
+#' shaded limit \eqn{\min_i L_i}. When the fitted cumulative incidence is
+#' improper, each residual follows \eqn{\mathrm{Exp}(1)} only up to a
+#' subject-specific limit \eqn{L_i}, so beyond the smallest one the
+#' 45-degree line no longer applies. Fitted cumulative incidence and
+#' subdistribution hazard curves at chosen covariate profiles are produced by
+#' \code{\link{predict.pcrr}} and drawn by \code{\link{plot.predict.pcrr}}.
 #'
 #' Model parameters are estimated by maximum likelihood using
 #' \code{\link[stats]{nlminb}}, with standard errors obtained from the inverse
@@ -153,9 +162,10 @@
 #' @param na.action function specifying how missing values in \code{ftime},
 #'  \code{fstatus}, or \code{cov} are handled. The default is
 #'  \code{na.omit}; \code{na.fail} is also supported.
-#' @param gtol relative convergence tolerance (\code{rel.tol}) used by 
-#' \code{nlminb()}. The default value is \code{1e-6}.
-#' @param maxiter maximum number of optimization iterations. internally, \code{eval.max} is set to \code{3 * maxiter}.
+#' @param gtol relative convergence tolerance (\code{rel.tol}) used by
+#'  \code{nlminb()}. The default value is \code{1e-10}.
+#' @param maxiter maximum number of optimization iterations. Internally,
+#'  \code{eval.max} is set to \code{3 * maxiter}.
 #' @param init a user-specified initial parameter vector.
 #'  See \code{\link{pcrr-parameter-order}} for the parameter ordering.
 #' @param variance logical value indicating whether variance estimates and
@@ -194,11 +204,13 @@
 #' \item{\code{cov_names}}{names of the covariates.}
 #' \item{\code{mapping}}{mapping between the original event labels and the internal event codes.}
 #' \item{\code{maxtime}}{maximum observed follow-up time.}
-#' \item{\code{case_all}}{the alpha values for all possible model assumption cases.}
+#' \item{\code{case_all}}{matrix with one row per model case and one column
+#'  per cause, holding the fixed \eqn{\alpha_k}: 0 for PH and 1 for PO.}
 #' \item{\code{case_model}}{labels describing all possible model assumption cases.}
 #' \item{\code{mle_case_all}}{the results of \code{nlminb()} optimization for all possible model assumption cases.}
 #' \item{\code{sco_case_all}}{score vectors evaluated at the MLEs for all possible model assumption cases.}
 #' \item{\code{hess_case_all}}{hessian matrices evaluated at the MLEs for all possible model assumption cases.} 
+#' 
 #' 
 #' @importFrom cmprsk crr
 #' @importFrom timereg prop.odds.subdist Event
@@ -229,14 +241,13 @@
 #'
 #' fit1 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2))
 #' print(fit1)
-#' fit1$case_model
 #' 
 #' summary(fit1, case = c(1, 3))
 #'
-#' pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = 1, event = 1)
+#' pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = c(1, 2))
 #' print(pred1)
 #' 
-#' plot(pred1)
+#' plot(pred1, case = 1)
 #'
 #' cure(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)))
 #'
@@ -274,8 +285,13 @@
 #' cure(fit2, cov = rbind(c(0, 0.15), c(1, -0.30), c(0, 0.70)))
 #' 
 #' @references
-#' Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
-#' cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
+#' 
+#' Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
+#'  Using a Novel Three-Parameter Logistic Function.
+#' \emph{The International Journal of Biostatistics}, 5(1), Article 29.
+#'
+#' Cox, D. R. and Snell, E. J. (1968). A general definition of residuals.
+#' \emph{Journal of the Royal Statistical Society, Series B}, 30(2), 248--275.
 #' 
 #' Dabrowska, D. M. and Doksum, K. A. (1988). Estimation and testing in a two-sample
 #' generalized odds-rate model. \emph{Journal of the American Statistical Association},
@@ -285,9 +301,11 @@
 #' distribution for survival data with competing risks, with an application to
 #' breast cancer data. \emph{Journal of Applied Statistics}, 43(12), 2239--2253.
 #' 
-#' Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
-#'  Using a Novel Three-Parameter Logistic Function.
-#' \emph{The International Journal of Biostatistics}, 5(1), Article 29.
+#' Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
+#' cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
+#'
+#' Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
+#' \emph{Journal of the Royal Statistical Society, Series B}, 31(1), 103--106.
 #'  
 #' @export
 pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failcode=1, cencode=0,
@@ -944,10 +962,11 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #'  each panel runs from 0 to the largest event residual or estimated
 #'  cumulative hazard, the upper limit included when \code{conf.int = TRUE};
 #'  see also \code{common.ylim}.
-#' @param xmin,xmax time range of the baseline panels. \code{xmin} must be
-#'  non-negative and \code{xmax} larger than it; \code{xmax = NULL} (default)
-#'  means \code{x$maxtime}, the end of follow-up, where the semiparametric
-#'  curve ends. Neither affects the Cox--Snell screen.
+#' @param xmin,xmax range of the x-axis, shared by every panel on both pages.
+#'  \code{xmin} must be a single non-negative number. If \code{xmax} is
+#'  \code{NULL} (default), the largest prediction time of the selected cases
+#'  is used. Otherwise, \code{xmax} must be a single finite number larger than
+#'  \code{xmin}.
 #' @param xlab,ylab axis labels of the baseline panels; \code{ylab} also
 #'  appears in the header of the baseline screen. Under a PO link the curve
 #'  is the baseline odds rather than a cumulative hazard, and the label is
@@ -1555,6 +1574,7 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 }
 
 
+
 #' Summarize a Fitted Parametric Competing Risks Regression Model
 #'
 #' Produces a summary of a fitted \code{"pcrr"} object, including
@@ -1578,8 +1598,8 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #' \eqn{z = \hat{\beta}/\mathrm{se}(\hat{\beta})} and the two-sided p-value are
 #' reported. The Wald test assesses \eqn{H_0\!: \beta = 0}, that is, whether the
 #' covariate affects the cumulative incidence of that cause. Standard errors come
-#' from the inverse observed information matrix, so this table requires
-#' \code{variance = TRUE}.
+#' from the inverse observed information matrix; with \code{variance = FALSE}
+#' only the estimates are shown, here and in the other tables.
 #'
 #' \emph{Confidence intervals.} The same coefficients are shown on the
 #' exponentiated scale, with intervals formed as
@@ -1630,16 +1650,18 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #'   statistics and p-values.}
 #'   \item{\code{conf_int}}{the same coefficients on the exponentiated scale
 #'   with confidence limits at \code{conf.level}.}
-#'   \item{\code{baseline}}{the distribution-specific baseline parameters:
+#'   \item{\code{base_param}}{the distribution-specific baseline parameters:
 #'   \code{rho} and \code{tau} for \code{"gompertz2"}, \code{rho}, \code{tau}
 #'   and \code{eta} for \code{"gompertz3"}, and \code{b}, \code{c} and
 #'   \code{p} for \code{"logistic"}. \code{alpha} is fixed within a case and
 #'   is not included.}
 #'   \item{\code{shape}}{the \eqn{H_0\!: \eta_k = 0} test under
-#'   \code{"gompertz3"}; an empty list for the other baselines.}
+#'   \code{"gompertz3"}; \code{NULL} for the other baselines and whenever
+#'   \code{variance = FALSE}.}
 #'   \item{\code{inf}, \code{invinf}}{observed information matrix and its
 #'   inverse. A singular matrix is reported with a warning and filled with
-#'   \code{NA}.}
+#'   \code{NA}. Both are \code{NULL} when the model was fitted with
+#'   \code{variance = FALSE}.}
 #'   \item{\code{converged}, \code{message}, \code{loglik}, \code{iter}}{
 #'   convergence status, optimizer message, maximised log-likelihood and
 #'   iteration count of each case. \code{loglik} is \code{NaN} where the
@@ -1653,8 +1675,9 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
 #' available cases).
 #'
 #' @seealso
-#' \code{\link{pcrr}}, 
-#' \code{\link{print.summary.pcrr}}
+#' \code{\link{pcrr}},
+#' \code{\link{print.summary.pcrr}},
+#' \code{\link{plot.pcrr}}
 #'
 #' @export
 summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(options()$digits - 4, 3), ...){
@@ -1885,9 +1908,12 @@ summary.pcrr <- function(object, case = NULL, conf.level = 0.95, digits = max(op
 
 #' Print a Summary of a Parametric Competing Risks Regression Model
 #'
-#' Prints a summary object produced by \code{\link{summary.pcrr}},
-#' including regression coefficients, confidence intervals, baseline
-#' parameter estimates, and link function tests.
+#' Prints a summary object produced by \code{\link{summary.pcrr}}: for each
+#' selected model case, the regression coefficients, confidence intervals,
+#' baseline parameter estimates and, under \code{"gompertz3"}, the baseline
+#' shape test, followed by the convergence status and log-likelihood. A case
+#' that did not converge is flagged before its tables. The link tests that
+#' selected the cases are printed by \code{\link{print.pcrr}}, not here.
 #'
 #' @param x object of class \code{"summary.pcrr"}.
 #' @param digits number of significant digits to display.
@@ -2094,7 +2120,8 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #' @param object object of class \code{"pcrr"}.
 #' @param cov numeric matrix of covariate values. Rows correspond to
 #'  covariate profiles and columns correspond to covariates included
-#'  in the fitted model.
+#'  in the fitted model. A vector is accepted and is reshaped row-wise when
+#'  its length is a multiple of the number of covariates.
 #' @param times optional vector of time points at which predictions are
 #'  evaluated. If omitted, 200 equally spaced time points over the
 #'  observed time range are used.
@@ -2121,11 +2148,12 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #'   finite \code{t_boundary} the entries are \code{NA} rather than zero.}
 #'   \item{\code{xmh_base}}{turning point of the baseline hazard under
 #'   \code{"gompertz3"} and \code{"logistic"} when one exists at a positive
-#'   time, and \code{NULL} otherwise. It is always \code{NULL} under
+#'   time, and \code{NA} otherwise. It is always \code{NA} under
 #'   \code{"gompertz2"}, whose baseline hazard is monotone.}
-#'   \item{\code{xmh_obs}}{named vector of profile-specific turning points of
-#'   the subdistribution hazard, found numerically; \code{NULL} where none
-#'   exists, and always \code{NULL} under \code{"gompertz2"}.}
+#'   \item{\code{xmh_obs}}{vector of profile-specific turning points of the
+#'   subdistribution hazard, one per row of \code{cov} and found numerically,
+#'   with \code{NA} for a profile that has none. Every entry is \code{NA}
+#'   under \code{"gompertz2"}.}
 #'   \item{\code{t_boundary}}{named vector of the times at which
 #'   \eqn{1+\widehat{\alpha}_k\exp(\mathbf{z}^{\top}\boldsymbol{\widehat{\beta}}_k)
 #'   \widehat{u}_k(t)} reaches zero, and \code{Inf} where it does not. Since a
@@ -2133,6 +2161,11 @@ print.summary.pcrr <- function(x, digits = x$digits, ...){
 #'   throughout and these entries are \code{Inf}; a finite value can arise only
 #'   in the unconstrained fit.}
 #' }
+#'
+#' \code{converged} and \code{message} are lists indexed by selected case,
+#' giving the convergence status and optimizer message of each case's fit; a
+#' case that did not converge is still predicted, and flagged when printed or
+#' plotted.
 #'
 #' The remaining components are scalar: \code{distribution}, \code{eta} (the
 #' fitted \eqn{\eta_k}, nested in the same way, for \code{"gompertz3"} only and
@@ -2577,8 +2610,10 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
 #' Print Predicted Cumulative Incidence Functions
 #'
 #' Prints a summary of predicted cumulative incidence functions produced by
-#' \code{\link{predict.pcrr}}, including event type, maximum hazard rate time
-#' (for \code{"gompertz3"} and \code{"logistic"}), and predicted values.
+#' \code{\link{predict.pcrr}}, for each selected case and event: the hazard
+#' turning points (for \code{"gompertz3"} and \code{"logistic"}) and the
+#' predicted values. A case that did not converge is flagged before its
+#' output.
 #'
 #' @param x object of class \code{"predict.pcrr"}.
 #' @param digits number of decimal places to format the maximum hazard rate time.
@@ -2588,9 +2623,9 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
 #' The function prints the prediction information and returns the input object invisibly.
 #'
 #' @seealso
-#' \code{\link{pcrr}}, 
-#' \code{\link{plot.pcrr}},
-#' \code{\link{predict.pcrr}}
+#' \code{\link{pcrr}},
+#' \code{\link{predict.pcrr}},
+#' \code{\link{plot.predict.pcrr}}
 #'
 #' @export
 print.predict.pcrr <- function(x, digits = 4, ...){
@@ -2796,10 +2831,6 @@ print.predict.pcrr <- function(x, digits = 4, ...){
 #' @seealso
 #' \code{\link{pcrr}},
 #' \code{\link{predict.pcrr}}
-#'
-#' @importFrom graphics abline legend lines mtext par points
-#' @importFrom grDevices dev.interactive devAskNewPage
-#' @importFrom stats approx
 #'
 #' @export
 plot.predict.pcrr <- function(x, case = NULL, event = NULL,
@@ -3163,7 +3194,8 @@ plot.predict.pcrr <- function(x, case = NULL, event = NULL,
 #' @param ... further arguments passed to or from methods.
 #'
 #' @return
-#' A numeric vector containing the estimated cure fractions.
+#' An object whose class depends on the method; for a \code{"pcrr"} fit see
+#' \code{\link{cure.pcrr}} below.
 #'
 #'
 #' @export
@@ -3200,8 +3232,10 @@ cure <- function(object, ...) UseMethod("cure")
 #' }
 #'
 #' The remaining components are \code{case} (the indices selected),
-#' \code{case_model} (the labels of all available cases) and \code{event} (the
-#' event codes selected).
+#' \code{case_model} (the labels of all available cases), \code{event} (the
+#' event codes selected), and \code{converged} and \code{message}, lists
+#' indexed by selected case giving the convergence status and optimizer
+#' message of each case's fit.
 #'
 #' Because the estimate is a model-based extrapolation beyond the observed
 #' follow-up, it is a statement about the fitted distribution rather than an
@@ -3390,9 +3424,10 @@ cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
 #' Print Estimated Cure Fractions
 #'
 #' Prints a summary of estimated cure fractions produced by
-#' \code{\link{cure.pcrr}}, including the estimated cure fraction,
-#' its classification, and the boundary time of the cumulative incidence
-#' function when a finite boundary exists.
+#' \code{\link{cure.pcrr}}, for each selected case and event: the estimated
+#' cure fraction of each profile, its classification, and the boundary time
+#' of the cumulative incidence function when a finite boundary exists. A case
+#' that did not converge is flagged before its output.
 #'
 #' @param x object of class \code{"cure.pcrr"}.
 #' @param digits number of decimal places to format the cure fractions

@@ -17,9 +17,12 @@
 The summary is printed. The function returns the input object invisibly.
 }
 \description{
-Prints a summary object produced by \code{\link{summary.pcrr}},
-including regression coefficients, confidence intervals, baseline
-parameter estimates, and link function tests.
+Prints a summary object produced by \code{\link{summary.pcrr}}: for each
+selected model case, the regression coefficients, confidence intervals,
+baseline parameter estimates and, under \code{"gompertz3"}, the baseline
+shape test, followed by the convergence status and log-likelihood. A case
+that did not converge is flagged before its tables. The link tests that
+selected the cases are printed by \code{\link{print.pcrr}}, not here.
 }
 \seealso{
 \code{\link{pcrr}},

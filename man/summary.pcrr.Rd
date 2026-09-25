@@ -37,16 +37,18 @@ with one element per selected model case, named by the case labels:
 statistics and p-values.}
 \item{\code{conf_int}}{the same coefficients on the exponentiated scale
 with confidence limits at \code{conf.level}.}
-\item{\code{baseline}}{the distribution-specific baseline parameters:
+\item{\code{base_param}}{the distribution-specific baseline parameters:
 \code{rho} and \code{tau} for \code{"gompertz2"}, \code{rho}, \code{tau}
 and \code{eta} for \code{"gompertz3"}, and \code{b}, \code{c} and
 \code{p} for \code{"logistic"}. \code{alpha} is fixed within a case and
 is not included.}
 \item{\code{shape}}{the \eqn{H_0\!: \eta_k = 0} test under
-\code{"gompertz3"}; an empty list for the other baselines.}
+\code{"gompertz3"}; \code{NULL} for the other baselines and whenever
+\code{variance = FALSE}.}
 \item{\code{inf}, \code{invinf}}{observed information matrix and its
 inverse. A singular matrix is reported with a warning and filled with
-\code{NA}.}
+\code{NA}. Both are \code{NULL} when the model was fitted with
+\code{variance = FALSE}.}
 \item{\code{converged}, \code{message}, \code{loglik}, \code{iter}}{
 convergence status, optimizer message, maximised log-likelihood and
 iteration count of each case. \code{loglik} is \code{NaN} where the
@@ -81,8 +83,8 @@ Three tables are produced, with a fourth under \code{"gompertz3"}.
 \eqn{z = \hat{\beta}/\mathrm{se}(\hat{\beta})} and the two-sided p-value are
 reported. The Wald test assesses \eqn{H_0\!: \beta = 0}, that is, whether the
 covariate affects the cumulative incidence of that cause. Standard errors come
-from the inverse observed information matrix, so this table requires
-\code{variance = TRUE}.
+from the inverse observed information matrix; with \code{variance = FALSE}
+only the estimates are shown, here and in the other tables.
 
 \emph{Confidence intervals.} The same coefficients are shown on the
 exponentiated scale, with intervals formed as
@@ -115,5 +117,6 @@ adequate. The test is omitted for \code{"gompertz2"} and \code{"logistic"} fits.
 }
 \seealso{
 \code{\link{pcrr}},
-\code{\link{print.summary.pcrr}}
+\code{\link{print.summary.pcrr}},
+\code{\link{plot.pcrr}}
 }
