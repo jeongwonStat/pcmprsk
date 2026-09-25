@@ -285,7 +285,6 @@
 #' cure(fit2, cov = rbind(c(0, 0.15), c(1, -0.30), c(0, 0.70)))
 #' 
 #' @references
-#' 
 #' Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
 #'  Using a Novel Three-Parameter Logistic Function.
 #' \emph{The International Journal of Biostatistics}, 5(1), Article 29.

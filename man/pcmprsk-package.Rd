@@ -48,8 +48,12 @@ baseline distribution is fitted, the model also supports estimation
 of long-term event probabilities and cure fractions.
 }
 \references{
-Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
-cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
+Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
+Using a Novel Three-Parameter Logistic Function.
+\emph{The International Journal of Biostatistics}, 5(1), Article 29.
+
+Cox, D. R. and Snell, E. J. (1968). A general definition of residuals.
+\emph{Journal of the Royal Statistical Society, Series B}, 30(2), 248--275.
 
 Dabrowska, D. M. and Doksum, K. A. (1988). Estimation and testing in a two-sample
 generalized odds-rate model. \emph{Journal of the American Statistical Association},
@@ -59,9 +63,11 @@ Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompert
 distribution for survival data with competing risks, with an application to
 breast cancer data. \emph{Journal of Applied Statistics}, 43(12), 2239--2253.
 
-Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death
-Using a Novel Three-Parameter Logistic Function.
-\emph{The International Journal of Biostatistics}, 5(1), Article 29.
+Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
+cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
+
+Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
+\emph{Journal of the Royal Statistical Society, Series B}, 31(1), 103--106.
 }
 \seealso{
 Useful links:
