@@ -256,6 +256,8 @@ event <- ifelse(time == t1, 1, ifelse(time == t2, 2, 0))
 fit1 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2))
 print(fit1)
 
+plot(fit1)
+
 summary(fit1, case = c(1, 3))
 
 pred1 <- predict(fit1, cov = rbind(c(0, 0.13), c(1, -0.15), c(0, 0.40)), case = c(1, 2))
@@ -319,6 +321,11 @@ cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
 
 Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
 \emph{Journal of the Royal Statistical Society, Series B}, 31(1), 103--106.
+
+Martinussen, T. and Scheike, T. H. (2006).
+\emph{Dynamic Regression Models for Survival Data}.
+Springer, New York.
+doi:10.1007/0-387-33960-4
 }
 \seealso{
 \code{\link{print.pcrr}},

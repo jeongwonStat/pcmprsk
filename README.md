@@ -261,3 +261,5 @@ Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompert
 Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the cumulative incidence function. Biostatistics, 8(2), 184–196.
 
 Loynes, R. M. (1969). On Cox and Snell's general definition of residuals. Journal of the Royal Statistical Society, Series B, 31(1), 103–106.
+
+Martinussen, T. and Scheike, T. H. (2006). Dynamic Regression Models for Survival Data. Springer, New York. doi:10.1007/0-387-33960-4

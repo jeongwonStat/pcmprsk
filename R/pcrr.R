@@ -217,7 +217,7 @@
 #' @importFrom survival coxph Surv survfit
 #' @importFrom stats D model.matrix na.fail na.omit nlminb pnorm qnorm printCoefmat setNames uniroot approx as.formula
 #' @importFrom graphics abline box legend lines mtext par plot.new points rect title
-#' @importFrom grDevices dev.interactive devAskNewPage
+#' @importFrom grDevices dev.interactive devAskNewPage recordGraphics
 #' @importFrom utils head
 #' 
 #' @examples
@@ -241,6 +241,8 @@
 #'
 #' fit1 <- pcrr(ftime = time, fstatus = event, cov = cbind(z1 = z1, z2 = z2))
 #' print(fit1)
+#' 
+#' plot(fit1)
 #' 
 #' summary(fit1, case = c(1, 3))
 #'
@@ -305,7 +307,12 @@
 #'
 #' Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
 #' \emph{Journal of the Royal Statistical Society, Series B}, 31(1), 103--106.
-#'  
+#'
+#' Martinussen, T. and Scheike, T. H. (2006).
+#' \emph{Dynamic Regression Models for Survival Data}.
+#' Springer, New York.
+#' doi:10.1007/0-387-33960-4
+#' 
 #' @export
 pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failcode=1, cencode=0,
                  na.action=na.omit, gtol=1e-10, maxiter=300, init, variance=TRUE, sig.level=0.05) {
@@ -1431,6 +1438,37 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     top_of(c(g$time, g$H, if (isTRUE(conf.int)) g$hi))
   }
   
+  ## A legend is laid out once, at the device size of the moment, and its
+  ## position is stored in data coordinates. A screen device redraws at
+  ## another size (RStudio on every pane resize, Zoom and Export) by
+  ## replaying that layout instead of redoing it, so a legend laid out in a
+  ## narrow pane lands left of the plot region and is clipped away. On a
+  ## screen device the layout code itself is therefore recorded with
+  ## recordGraphics(), so every redraw lays the legend out afresh, shrinking
+  ## it when the panel is narrower than its text. Off-screen devices (png,
+  ## pdf, and the one gridGraphics draws on for patchwork, cowplot and
+  ## ggplotify) are never resized, and gridGraphics cannot read a
+  ## recordGraphics() entry, so there the legend is drawn exactly as before.
+  draw_legend <- function(pos, labels, cols, ltys, lwds) {
+    if (!dev.interactive()) {
+      legend(pos, legend = labels, col = cols, lty = ltys, lwd = lwds,
+             title = legend.title, bty = "n")
+      return(invisible(NULL))
+    }
+    recordGraphics({
+      w   <- legend(pos, legend = labels, col = cols, lty = ltys, lwd = lwds,
+                    title = ttl, bty = "n", plot = FALSE)$rect$w
+      usr <- par("usr")
+      legend(pos, legend = labels, col = cols, lty = ltys, lwd = lwds,
+             title = ttl, bty = "n",
+             cex = min(1, (usr[2] - usr[1]) / w))
+    },
+    list(pos = pos, labels = labels, cols = cols, ltys = ltys, lwds = lwds,
+         ttl = legend.title),
+    getNamespace("graphics"))
+    invisible(NULL)
+  }
+  
   ## the case label, and the quantity beside it, in the outer margin
   page_header <- function(t1, t2) {
     cx <- par("cex")
@@ -1456,12 +1494,12 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
       has_sp   <- !is.null(sp)
       semi_lab <- if (b$link == "PH") "Fine-Gray (semiparametric)"
       else "Proportional odds (semiparametric)"
-      legend(legend.pos[1],
-             legend = c(paste0("Parametric (", dist, ")"),
-                        if (has_sp) semi_lab),
-             col = c(col.par, if (has_sp) col.semi),
-             lty = c(lty.par, if (has_sp) lty.semi),
-             lwd = lwd, title = legend.title, bty = "n")
+      draw_legend(legend.pos[1],
+                  labels = c(paste0(dist, " (parametric)"),
+                             if (has_sp) semi_lab),
+                  cols = c(col.par, if (has_sp) col.semi),
+                  ltys = c(lty.par, if (has_sp) lty.semi),
+                  lwds = lwd)
     }
   }
   
@@ -1505,8 +1543,8 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
         lg  <- c(lg, sprintf("valid up to min L = %.3g", Lm))
         lgc <- c(lgc, "gray55"); lgl <- c(lgl, 3); lgw <- c(lgw, 1)
       }
-      legend(legend.pos[2], legend = lg, col = lgc, lty = lgl, lwd = lgw,
-             title = legend.title, bty = "n")
+      draw_legend(legend.pos[2], labels = lg, cols = lgc, ltys = lgl,
+                  lwds = lgw)
     }
     if (valid)
       mtext("judge inside the shaded region only", side = 3, line = 0.15,
