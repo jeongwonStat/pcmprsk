@@ -1061,7 +1061,6 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #' \code{\link{predict.pcrr}},
 #' \code{\link{cure.pcrr}}
 #'
-#' @importFrom grDevices recordGraphics
 #' @export
 plot.pcrr <- function(x, case = NULL, event = NULL,
                       baseline = TRUE, coxsnell = TRUE,
