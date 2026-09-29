@@ -86,11 +86,12 @@ each panel runs from 0 to the largest event residual or estimated
 cumulative hazard, the upper limit included when \code{conf.int = TRUE};
 see also \code{common.ylim}.}
 
-\item{xmin, xmax}{range of the x-axis, shared by every panel on both pages.
-\code{xmin} must be a single non-negative number. If \code{xmax} is
-\code{NULL} (default), the largest prediction time of the selected cases
-is used. Otherwise, \code{xmax} must be a single finite number larger than
-\code{xmin}.}
+\item{xmin, xmax}{range of the time axis, shared by every panel of the
+baseline screen; the Cox--Snell screen is on the residual scale and is set
+by \code{lim.coxsnell}. \code{xmin} must be a single non-negative number.
+If \code{xmax} is \code{NULL} (default), \code{x$maxtime}, the end of
+follow-up, is used. Otherwise, \code{xmax} must be a single finite number
+larger than \code{xmin}.}
 
 \item{xlab, ylab}{axis labels of the baseline panels; \code{ylab} also
 appears in the header of the baseline screen. Under a PO link the curve
@@ -100,7 +101,9 @@ not adapted to the link, so set it when PO cases are drawn.}
 \item{xlab.coxsnell, ylab.coxsnell}{axis labels of the Cox--Snell panels;
 \code{xlab.coxsnell} also appears in the header of the Cox--Snell screen.}
 
-\item{legend}{logical; draw a legend on each panel.}
+\item{legend}{logical; draw a legend on each panel. On a screen device the
+legend is laid out again whenever the plot is redrawn at another size,
+and shrunk when the panel is narrower than its text.}
 
 \item{legend.pos}{legend positions as \code{\link[graphics]{legend}}
 keywords, the first for the baseline screen and the second for the
@@ -266,6 +269,22 @@ parametric curve alone; a warning is also issued when \code{crr()} does
 not converge. An observed event whose residual is not finite, because the
 fitted model is not defined at its time, is dropped from the Cox--Snell
 panel with a warning, and a panel left without events shows only a note.
+}
+\references{
+Cox, D. R. and Snell, E. J. (1968). A general definition of residuals
+(with discussion). \emph{Journal of the Royal Statistical Society,
+Series B}, \bold{30}, 248--275.
+
+Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
+subdistribution of a competing risk. \emph{Journal of the American
+Statistical Association}, \bold{94}, 496--509.
+
+Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on cumulative
+incidence function. \emph{Biostatistics}, \bold{8}, 184--196.
+
+Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
+\emph{Journal of the Royal Statistical Society, Series B}, \bold{31},
+103--106.
 }
 \seealso{
 \code{\link{pcrr}},

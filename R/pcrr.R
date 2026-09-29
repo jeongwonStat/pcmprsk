@@ -827,6 +827,8 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
   invisible(x)
 }
 
+
+
 #' Diagnostic Plots for a Parametric Competing Risks Regression Model
 #'
 #' @description
@@ -968,18 +970,21 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #'  each panel runs from 0 to the largest event residual or estimated
 #'  cumulative hazard, the upper limit included when \code{conf.int = TRUE};
 #'  see also \code{common.ylim}.
-#' @param xmin,xmax range of the x-axis, shared by every panel on both pages.
-#'  \code{xmin} must be a single non-negative number. If \code{xmax} is
-#'  \code{NULL} (default), the largest prediction time of the selected cases
-#'  is used. Otherwise, \code{xmax} must be a single finite number larger than
-#'  \code{xmin}.
+#' @param xmin,xmax range of the time axis, shared by every panel of the
+#'  baseline screen; the Cox--Snell screen is on the residual scale and is set
+#'  by \code{lim.coxsnell}. \code{xmin} must be a single non-negative number.
+#'  If \code{xmax} is \code{NULL} (default), \code{x$maxtime}, the end of
+#'  follow-up, is used. Otherwise, \code{xmax} must be a single finite number
+#'  larger than \code{xmin}.
 #' @param xlab,ylab axis labels of the baseline panels; \code{ylab} also
 #'  appears in the header of the baseline screen. Under a PO link the curve
 #'  is the baseline odds rather than a cumulative hazard, and the label is
 #'  not adapted to the link, so set it when PO cases are drawn.
 #' @param xlab.coxsnell,ylab.coxsnell axis labels of the Cox--Snell panels;
 #'  \code{xlab.coxsnell} also appears in the header of the Cox--Snell screen.
-#' @param legend logical; draw a legend on each panel.
+#' @param legend logical; draw a legend on each panel. On a screen device the
+#'  legend is laid out again whenever the plot is redrawn at another size,
+#'  and shrunk when the panel is narrower than its text.
 #' @param legend.pos legend positions as \code{\link[graphics]{legend}}
 #'  keywords, the first for the baseline screen and the second for the
 #'  Cox--Snell screen; a single value serves both. The defaults suit a rising
@@ -1033,6 +1038,21 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #' The Nelson--Aalen curves are not returned. The plots are produced as a
 #' side effect.
 #'
+#' @references
+#' Cox, D. R. and Snell, E. J. (1968). A general definition of residuals
+#' (with discussion). \emph{Journal of the Royal Statistical Society,
+#' Series B}, \bold{30}, 248--275.
+#'
+#' Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
+#' subdistribution of a competing risk. \emph{Journal of the American
+#' Statistical Association}, \bold{94}, 496--509.
+#'
+#' Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on cumulative
+#' incidence function. \emph{Biostatistics}, \bold{8}, 184--196.
+#'
+#' Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
+#' \emph{Journal of the Royal Statistical Society, Series B}, \bold{31},
+#' 103--106.
 #'
 #' @seealso
 #' \code{\link{pcrr}},
@@ -1041,7 +1061,7 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #' \code{\link{predict.pcrr}},
 #' \code{\link{cure.pcrr}}
 #'
-#'
+#' @importFrom grDevices recordGraphics
 #' @export
 plot.pcrr <- function(x, case = NULL, event = NULL,
                       baseline = TRUE, coxsnell = TRUE,
