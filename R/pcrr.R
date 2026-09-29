@@ -1038,28 +1038,12 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 #' The Nelson--Aalen curves are not returned. The plots are produced as a
 #' side effect.
 #'
-#' @references
-#' Cox, D. R. and Snell, E. J. (1968). A general definition of residuals
-#' (with discussion). \emph{Journal of the Royal Statistical Society,
-#' Series B}, \bold{30}, 248--275.
-#'
-#' Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
-#' subdistribution of a competing risk. \emph{Journal of the American
-#' Statistical Association}, \bold{94}, 496--509.
-#'
-#' Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on cumulative
-#' incidence function. \emph{Biostatistics}, \bold{8}, 184--196.
-#'
-#' Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
-#' \emph{Journal of the Royal Statistical Society, Series B}, \bold{31},
-#' 103--106.
 #'
 #' @seealso
 #' \code{\link{pcrr}},
 #' \code{\link{print.pcrr}},
 #' \code{\link{summary.pcrr}},
-#' \code{\link{predict.pcrr}},
-#' \code{\link{cure.pcrr}}
+#' \code{\link{predict.pcrr}}
 #'
 #' @export
 plot.pcrr <- function(x, case = NULL, event = NULL,
