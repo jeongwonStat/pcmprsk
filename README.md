@@ -252,14 +252,14 @@ Future development of `pcmprsk` includes:
 ### References
 Cheng, Y. (2009). Modeling Cumulative Incidences of Dementia and Dementia-Free Death Using a Novel Three-Parameter Logistic Function. The International Journal of Biostatistics, 5(1), Article 29.
 
-Cox, D. R. and Snell, E. J. (1968). A general definition of residuals. Journal of the Royal Statistical Society, Series B, 30(2), 248–275.
+Cox, D. R. and Snell, E. J. (1968). A general definition of residuals. Journal of the Royal Statistical Society: Series B (Methodological), 30(2), 248–265.
 
 Dabrowska, D. M. and Doksum, K. A. (1988). Estimation and testing in a two-sample generalized odds-rate model. Journal of the American Statistical Association, 83(403), 744–749.
+
+Eriksson, F., Li, J., Scheike, T., and Zhang, M.-J. (2015). The proportional odds cumulative incidence model for competing risks. Biometrics, 71(3), 687–695.
 
 Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompertz distribution for survival data with competing risks, with an application to breast cancer data. Journal of Applied Statistics, 43(12), 2239–2253.
 
 Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the cumulative incidence function. Biostatistics, 8(2), 184–196.
 
 Loynes, R. M. (1969). On Cox and Snell's general definition of residuals. Journal of the Royal Statistical Society, Series B, 31(1), 103–106.
-
-Martinussen, T. and Scheike, T. H. (2006). Dynamic Regression Models for Survival Data. Springer, New York. doi:10.1007/0-387-33960-4

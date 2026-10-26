@@ -292,26 +292,25 @@
 #' \emph{The International Journal of Biostatistics}, 5(1), Article 29.
 #'
 #' Cox, D. R. and Snell, E. J. (1968). A general definition of residuals.
-#' \emph{Journal of the Royal Statistical Society, Series B}, 30(2), 248--275.
-#' 
+#' \emph{Journal of the Royal Statistical Society: Series B}, 30(2), 248--265.
+#'
 #' Dabrowska, D. M. and Doksum, K. A. (1988). Estimation and testing in a two-sample
 #' generalized odds-rate model. \emph{Journal of the American Statistical Association},
 #' 83(403), 744--749.
 #'
+#' Eriksson, F., Li, J., Scheike, T., and Zhang, M.-J. (2015).
+#' The proportional odds cumulative incidence model for competing risks.
+#' \emph{Biometrics}, 71(3), 687--695.
+#'
 #' Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompertz
 #' distribution for survival data with competing risks, with an application to
 #' breast cancer data. \emph{Journal of Applied Statistics}, 43(12), 2239--2253.
-#' 
+#'
 #' Jeong, J.-H. and Fine, J. P. (2007). Parametric regression on the
 #' cumulative incidence function. \emph{Biostatistics}, 8(2), 184--196.
 #'
 #' Loynes, R. M. (1969). On Cox and Snell's general definition of residuals.
-#' \emph{Journal of the Royal Statistical Society, Series B}, 31(1), 103--106.
-#'
-#' Martinussen, T. and Scheike, T. H. (2006).
-#' \emph{Dynamic Regression Models for Survival Data}.
-#' Springer, New York.
-#' doi:10.1007/0-387-33960-4
+#' \emph{Journal of the Royal Statistical Society: Series B}, 31(1), 103--106.
 #' 
 #' @export
 pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failcode=1, cencode=0,
@@ -381,6 +380,7 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
   # Dummy coding
   if (!(cencode  %in% fstatus)) stop("cencode is not in fstatus.")
   if (!(failcode %in% fstatus)) stop("failcode is not in fstatus.")
+  if (cencode == failcode) stop("cencode and failcode must be different.")
   
   other_events_codes <- sort(setdiff(unique(fstatus), c(cencode, failcode)))
   codes_ordered <- c(cencode, failcode, other_events_codes)
@@ -1498,7 +1498,9 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
       semi_lab <- if (b$link == "PH") "Fine-Gray (semiparametric)"
       else "Proportional odds (semiparametric)"
       draw_legend(legend.pos[1],
-                  labels = c(paste0(dist, " (parametric)"),
+                  labels = c(c(gompertz2 = "Gompertz (2-parameter)",
+                               gompertz3 = "Gompertz (3-parameter)",
+                               logistic  = "Modified logistic")[[dist]],
                              if (has_sp) semi_lab),
                   cols = c(col.par, if (has_sp) col.semi),
                   ltys = c(lty.par, if (has_sp) lty.semi),
