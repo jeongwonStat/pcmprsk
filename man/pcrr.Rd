@@ -83,8 +83,9 @@ stored according to the parameter ordering described in \code{\link{pcrr-paramet
 \item{\code{message}}{message returned by the optimization routine.}
 \item{\code{call}}{matched function call.}
 \item{\code{x}}{The processed \code{ftime} vector containing the observed event or censoring times.}
-\item{\code{delta}}{The processed \code{fstatus} vector converted to a matrix of event indicators.}
+\item{\code{event}}{The event of interest used to identify the cause-specific event observations.}
 \item{\code{z}}{The processed \code{cov} matrix containing the covariate values.}
+\item{\code{cencode}}{The code used to identify censored observations in the \code{fstatus} vector.}
 \item{\code{n}}{total number of observations in the original data set.}
 \item{\code{n_missing}}{number of observations removed due to missing values.}
 \item{\code{k}}{number of event categories, excluding the censoring category.}
@@ -315,6 +316,10 @@ generalized odds-rate model. \emph{Journal of the American Statistical Associati
 Eriksson, F., Li, J., Scheike, T., and Zhang, M.-J. (2015).
 The proportional odds cumulative incidence model for competing risks.
 \emph{Biometrics}, 71(3), 687--695.
+
+Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
+subdistribution of a competing risk. \emph{Journal of the American
+Statistical Association}, 94(446), 496--509.
 
 Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompertz
 distribution for survival data with competing risks, with an application to

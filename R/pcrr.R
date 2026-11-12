@@ -194,8 +194,9 @@
 #' \item{\code{message}}{message returned by the optimization routine.}
 #' \item{\code{call}}{matched function call.}
 #' \item{\code{x}}{The processed \code{ftime} vector containing the observed event or censoring times.}
-#' \item{\code{delta}}{The processed \code{fstatus} vector converted to a matrix of event indicators.}
+#' \item{\code{event}}{The event of interest used to identify the cause-specific event observations.}
 #' \item{\code{z}}{The processed \code{cov} matrix containing the covariate values.}
+#' \item{\code{cencode}}{The code used to identify censored observations in the \code{fstatus} vector.}
 #' \item{\code{n}}{total number of observations in the original data set.}
 #' \item{\code{n_missing}}{number of observations removed due to missing values.}
 #' \item{\code{k}}{number of event categories, excluding the censoring category.}
@@ -301,6 +302,10 @@
 #' Eriksson, F., Li, J., Scheike, T., and Zhang, M.-J. (2015).
 #' The proportional odds cumulative incidence model for competing risks.
 #' \emph{Biometrics}, 71(3), 687--695.
+#' 
+#' Fine, J. P. and Gray, R. J. (1999). A proportional hazards model for the
+#' subdistribution of a competing risk. \emph{Journal of the American
+#' Statistical Association}, 94(446), 496--509.
 #'
 #' Haile, S. R., Jeong, J.-H., Chen, X. and Cheng, Y. (2016). A 3-parameter Gompertz
 #' distribution for survival data with competing risks, with an application to
@@ -690,8 +695,9 @@ pcrr <- function(ftime, fstatus, cov, distribution="gompertz2", dist=NULL, failc
               message   = theta_mle$message,
               call      = call,
               x         = x,
-              delta     = delta,
+              event     = fstatus,
               z         = z,
+              cencode   = cencode,
               n         = N,
               n_missing = N_mis,
               k = K,
@@ -828,222 +834,190 @@ print.pcrr <- function(x, digits = max(options()$digits - 4, 3), ...) {
 }
 
 
-
 #' Diagnostic Plots for a Parametric Competing Risks Regression Model
 #'
 #' @description
-#' Up to two diagnostic screens per model case, each with one panel per
-#' selected event. The baseline screen draws the fitted baseline
-#' \eqn{u_k(t)} against a semiparametric estimate that assumes the same link:
-#' Fine--Gray under proportional hazards (PH), a proportional odds
-#' subdistribution model under proportional odds (PO). The Cox--Snell screen
-#' draws the Nelson--Aalen estimate of the cumulative hazard of the Cox--Snell
-#' residuals against the 45-degree line. For each case the baseline screen
-#' comes first; either screen can be switched off with \code{baseline} or
-#' \code{coxsnell}.
+#' Draws diagnostic plots for selected model cases and events of a fitted
+#' \code{"pcrr"} object. Two types of diagnostics are available:
+#' a baseline comparison and a Cox--Snell residual plot.
+#' Either plot can be omitted using \code{baseline} or \code{coxsnell}.
+#' The underlying curves are returned invisibly.
 #'
 #' @details
-#' \strong{Baseline screen: against a semiparametric fit of the same link.}
-#' For each event the fitted \eqn{u_k(t)} is drawn against a semiparametric
-#' estimate of the same quantity, and \emph{which} estimate is used follows the
-#' link that the case fixes:
-#' \describe{
-#'   \item{PH (\eqn{\alpha_k = 0})}{\eqn{\Lambda^{CI}_k(t;\mathbf 0) = u_k(t)},
-#'     so \eqn{u_k(t)} is the baseline cumulative subdistribution hazard and
-#'     the reference is its Breslow-type estimate from
-#'     \code{\link[cmprsk]{crr}} (Fine and Gray, 1999), as in Jeong and Fine
-#'     (2007, Fig. 2).}
-#'   \item{PO (\eqn{\alpha_k = 1})}{\eqn{F_k/(1-F_k) =
-#'     e^{\mathbf z^{\top}\boldsymbol\beta_k}u_k(t)}, so the baseline odds is
-#'     \eqn{u_k(t)} itself, and the reference is the \code{Baseline} column of
-#'     the \code{cum} component of \code{\link[timereg]{prop.odds.subdist}}.}
+#' \strong{Baseline diagnostic.}
+#' Compares the fitted parametric baseline function with a semiparametric
+#' estimate for each selected event. Both are evaluated at zero covariates.
+#' The semiparametric reference is obtained using \code{\link[cmprsk]{crr}}
+#' for the proportional hazards (PH) link and
+#' \code{\link[timereg]{prop.odds.subdist}} for the proportional odds (PO)
+#' link. Both reference estimates are computed, but only the one corresponding
+#' to the link specified by each model case is displayed.
+#'
+#' The comparison helps assess whether the chosen baseline distribution
+#' adequately describes the data. Under the PO link, the baseline function
+#' represents the baseline odds rather than the baseline cumulative hazard.
+#'
+#' \strong{Cox--Snell residual diagnostic.}
+#' For cause \eqn{k}, the Cox--Snell residual of subject \eqn{i} is calculated
+#' by evaluating the fitted cumulative subdistribution hazard at the observed
+#' follow-up time:
+#' \deqn{
+#'   r_{ki} = \widehat{\Lambda}_{ki}(X_i),
+#'   \qquad X_i = \min(T_i, C_i).
 #' }
-#' Both estimators therefore return \eqn{u_k(t)} directly and no transformation
-#' is applied to either curve. Both are evaluated at
-#' \eqn{\mathbf z = \mathbf 0}, so no profile has to be chosen, and both are
-#' fitted to cause \eqn{k} alone with the covariates of the parametric model.
-#' \code{prop.odds.subdist()} draws random numbers, breaking tied event times
-#' with random jitter, so it is run with a fixed seed and the user's random
-#' number stream is restored afterwards: the curve is reproducible and
-#' \code{.Random.seed} is left as it was.
+#' Residuals are calculated for all subjects, including those who experience
+#' the event of interest, a competing event, or censoring.
 #'
-#' Matching the estimator to the link is what keeps this panel a check on the
-#' \emph{baseline alone}. Comparing a proportional odds fit against
-#' \code{crr}, which assumes proportional hazards, would put a second source
-#' of discrepancy into the same picture and leave a gap uninterpretable.
+#' The diagnostic plot compares the weighted Nelson--Aalen estimate of the
+#' cumulative hazard of the residuals with the 45-degree line. At each
+#' distinct residual value \eqn{u_j} corresponding to an event of interest,
+#' the estimate is updated using the number of events and the weighted
+#' risk-set size.
 #'
-#' This is the primary diagnostic: its reference is nonparametric in the
-#' baseline and covers the whole observed range. Curvature throughout points at
-#' a misspecified baseline; a gap opening only in the tail points at the
-#' extrapolation rather than the fit. The semiparametric curve ends at the end
-#' of follow-up, so with a larger \code{xmax} only the parametric curve
-#' continues. For cumulative incidence curves at chosen covariate profiles see
-#' \code{\link{predict.pcrr}}.
+#' Subjects contribute to the risk set while their residuals have not yet
+#' been exceeded. Subjects experiencing a competing event can remain in the
+#' risk set beyond their observed residual, with an inverse-probability-of-
+#' censoring weight
+#' \deqn{
+#'   q_{ki}(u) =
+#'   \frac{\widehat{G}\{\widehat{\Lambda}_{ki}^{-1}(u)\}}
+#'        {\widehat{G}(X_i)}.
+#' }
+#' Here, \eqn{\widehat{G}(t)} is the Kaplan--Meier estimate of the censoring
+#' survival function, evaluated at the left limit and estimated without
+#' covariates.
 #'
-#' \strong{Cox--Snell screen.}
-#' The residual of subject \eqn{i} for cause \eqn{k} is the fitted cumulative
-#' subdistribution hazard at the observed time,
-#' \eqn{r_i = \alpha_k^{-1}
-#' \log\{1 + \alpha_k e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}
-#' \widehat{u}_k(x_i)\}}, which is
-#' \eqn{e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}\widehat u_k(x_i)}
-#' when \eqn{\alpha_k = 0}. It counts as an event for a failure from cause
-#' \eqn{k} and as censored otherwise. Subjects failing from a competing cause
-#' are censored at \eqn{+\infty}, so they never leave the risk set, as the
-#' subdistribution hazard requires. The Nelson--Aalen estimate of the
-#' cumulative hazard of the residuals is then drawn as a step function
-#' jumping at the event residuals, with pointwise limits if
-#' \code{conf.int = TRUE}.
+#' To avoid extrapolating the censoring survival function beyond the observed
+#' follow-up, the contribution of each subject is restricted to residual
+#' values satisfying
+#' \eqn{u \le L_{ki}}, where
+#' \eqn{L_{ki} = \widehat{\Lambda}_{ki}(X_{(\max)})} and
+#' \eqn{X_{(\max)}} is the largest observed follow-up time.
 #'
-#' \strong{Where the 45-degree line is valid.} If the residuals were
-#' \eqn{\mathrm{Exp}(1)} the curve would follow the diagonal. They are not
-#' when the fitted baseline is bounded, \eqn{\widehat u_k(\infty) < \infty}:
-#' the fitted cumulative incidence is then improper (a cure fraction exists),
-#' so subject \eqn{i}'s residual is \eqn{\mathrm{Exp}(1)} only up to
-#' \eqn{L_i = \widehat\Lambda^{CI}_k(\infty; \mathbf{z}_i)}, beyond which its
-#' remaining mass, \eqn{e^{-L_i} = 1 - \widehat F_k(\infty; \mathbf{z}_i)},
-#' sits at \eqn{+\infty}. Since \eqn{L_i} varies with the covariates the
-#' residuals are not identically distributed and no single reference exists.
-#' On \eqn{0 \le u < \min_i L_i} nothing has been relocated yet and the
-#' diagonal is exact; that region is shaded, its edge is marked by a dotted
-#' line whose position the legend reports, and \strong{the plot should be
-#' read there and not beyond}. Past it the curve bends below the diagonal even
-#' when the model is correct. When the fitted baseline is unbounded every
-#' \eqn{L_i} is infinite: nothing is shaded and the diagonal is exact
-#' throughout.
+#' Under a correctly specified model, the Cox--Snell residuals should behave
+#' as a sample from the unit exponential distribution, accounting for
+#' competing events and right censoring. Consequently, the estimated
+#' cumulative hazard should be close to the 45-degree line.
+#' The final jump is omitted from the plot, unless it is the only jump,
+#' because it is based on the smallest risk set and can be unstable.
+#' It is nevertheless retained in the returned results.
 #'
-#' No p-value is reported and none should be attached. Tests built from fitted
-#' residuals treated as if they were the true errors understate significance
-#' systematically (Durbin, in the discussion of Cox and Snell, 1968, p.269),
-#' and adjusting the residuals does not help because the adjustment leaves
-#' their correlation unchanged (Loynes, 1969, p.105).
+#' No goodness-of-fit p-value is provided.
 #'
-#' \strong{Layout.} The selected cases are drawn in turn, each case's
-#' baseline screen followed by its Cox--Snell screen. A screen is one graphics
-#' page with a panel per selected event, titled by the event code and its
-#' link, under a header giving the case label (or \code{main}) and, beneath
-#' it, the quantity shown (\code{ylab} or \code{xlab.coxsnell}). If the
-#' events do not fit the grid (see \code{mfrow}) the screen continues on
-#' further pages, each with the header repeated. Graphical parameters are
-#' restored on exit.
+#' \strong{Reproducibility.}
+#' The \code{prop.odds.subdist()} function uses random jitter to handle
+#' tied event times. A fixed seed is therefore used for each fit, and the
+#' random number state is restored after the function finishes.
 #'
-#' \strong{Incomplete panels.} A case whose optimisation did not converge is
-#' still drawn, with a warning that its curves should not be interpreted. If
-#' a semiparametric fit fails, a warning is issued and the panel shows the
-#' parametric curve alone; a warning is also issued when \code{crr()} does
-#' not converge. An observed event whose residual is not finite, because the
-#' fitted model is not defined at its time, is dropped from the Cox--Snell
-#' panel with a warning, and a panel left without events shows only a note.
+#' \strong{Plot layout.}
+#' For each selected model case, the baseline diagnostic is drawn first,
+#' followed by the Cox--Snell diagnostic. Each screen contains one panel
+#' per selected event. If the selected events do not fit on one page,
+#' additional pages are used. The case label and the quantity being plotted
+#' are displayed in the header of each page.
 #'
-#' @param x an object of class \code{"pcrr"}. It must store the original data
-#'  (components \code{x}, \code{delta} and \code{z}); otherwise an error is
-#'  raised.
-#' @param case integer vector selecting model cases, numbered as shown by
-#'  \code{\link{print.pcrr}}. Cases are drawn in the order given and
-#'  duplicates are dropped. If \code{NULL} (default) every case is drawn.
-#' @param event vector of event codes, as stored in \code{x$mapping}. If
-#'  \code{NULL} (default) every event is drawn. Supplying \code{event} keeps
-#'  only those events, in the order given; the case selection is unaffected.
-#' @param baseline,coxsnell logical; draw the baseline screen and the
-#'  Cox--Snell screen respectively. Both default to \code{TRUE}, and at least
-#'  one must be. A screen that is switched off is not computed either
-#'  (\code{baseline = FALSE} skips the semiparametric fits) and has no
-#'  component in the returned list.
-#' @param col.par colour of the parametric curve on the baseline screen, and of
-#'  the Nelson--Aalen curve and its limits on the Cox--Snell screen.
-#' @param col.semi colour of the semiparametric curve on the baseline screen.
+#' \strong{Warnings and missing plots.}
+#' A model case that did not converge is still plotted, but a warning is
+#' issued and its diagnostics should be interpreted with caution.
+#' If a semiparametric fit fails or returns non-finite values, a warning
+#' is issued and the corresponding baseline panel displays only the
+#' parametric curve. A non-converged \code{crr()} fit is retained, with
+#' a warning that its estimate may be unreliable.
+#' If no usable events are available for a Cox--Snell panel, a note is
+#' displayed instead of the plot.
+#' Setting \code{baseline = FALSE} skips the semiparametric fits.
+#'
+#' @param x an object of class \code{"pcrr"}. The original data must be
+#'   stored in the object as \code{x}, \code{event}, and \code{z}.
+#' @param case integer vector specifying the model cases to plot, as numbered
+#'   in \code{\link{print.pcrr}}. By default, all available cases are selected.
+#'   Duplicates are removed, and plots follow the order supplied.
+#' @param event numeric vector specifying the event codes to plot, as stored
+#'   in \code{x$mapping}. By default, all events are selected. Duplicates
+#'   are removed, and plots follow the order supplied.
+#' @param baseline,coxsnell logical. Whether to draw the baseline diagnostic
+#'   and Cox--Snell residual diagnostic, respectively. Both default to
+#'   \code{TRUE}. At least one must be enabled. A disabled diagnostic is
+#'   not computed, and its corresponding returned component is \code{NULL}.
+#' @param col.par colour of the parametric baseline curve and the
+#'   Nelson--Aalen estimate in the Cox--Snell plot.
+#' @param col.semi colour of the semiparametric baseline curve.
 #' @param lty.par,lty.semi line types of the parametric and semiparametric
-#'  curves on the baseline screen.
-#' @param ref.col,ref.lty colour and line type of the 45-degree line on the
-#'  Cox--Snell screen.
-#' @param shade.col fill colour of the region in which the 45-degree line is
-#'  exact. \code{NA} suppresses the shading; the dotted line at its edge is
-#'  still drawn.
-#' @param conf.int logical; add pointwise limits at level 0.95, as dotted
-#'  lines, to the Nelson--Aalen estimate on the Cox--Snell screen. The limits
-#'  then enter the automatic axis range. Default \code{FALSE}.
-#' @param ylim y-axis limits applied to every baseline panel. If \code{NULL}
-#'  (default) each panel runs from 0 to 1.05 times the largest finite value
-#'  of its two curves on the time axis; see also \code{common.ylim}.
-#' @param lim.coxsnell limits of the Cox--Snell panels, applied to both axes so
-#'  that the 45-degree line runs corner to corner. If \code{NULL} (default)
-#'  each panel runs from 0 to the largest event residual or estimated
-#'  cumulative hazard, the upper limit included when \code{conf.int = TRUE};
-#'  see also \code{common.ylim}.
-#' @param xmin,xmax range of the time axis, shared by every panel of the
-#'  baseline screen; the Cox--Snell screen is on the residual scale and is set
-#'  by \code{lim.coxsnell}. \code{xmin} must be a single non-negative number.
-#'  If \code{xmax} is \code{NULL} (default), \code{x$maxtime}, the end of
-#'  follow-up, is used. Otherwise, \code{xmax} must be a single finite number
-#'  larger than \code{xmin}.
-#' @param xlab,ylab axis labels of the baseline panels; \code{ylab} also
-#'  appears in the header of the baseline screen. Under a PO link the curve
-#'  is the baseline odds rather than a cumulative hazard, and the label is
-#'  not adapted to the link, so set it when PO cases are drawn.
-#' @param xlab.coxsnell,ylab.coxsnell axis labels of the Cox--Snell panels;
-#'  \code{xlab.coxsnell} also appears in the header of the Cox--Snell screen.
-#' @param legend logical; draw a legend on each panel. On a screen device the
-#'  legend is laid out again whenever the plot is redrawn at another size,
-#'  and shrunk when the panel is narrower than its text.
-#' @param legend.pos legend positions as \code{\link[graphics]{legend}}
-#'  keywords, the first for the baseline screen and the second for the
-#'  Cox--Snell screen; a single value serves both. The defaults suit a rising
-#'  baseline and a residual curve on or below the diagonal.
-#' @param legend.title title of the legends; \code{NULL} (default) for none.
-#' @param lwd line width of the curves on both screens.
-#' @param main title(s) replacing the case label in the screen headers,
-#'  recycled over the selected cases so that each element titles one case's
-#'  screens. If \code{NULL} (default) the case label is used. Panel titles
-#'  are not affected.
-#' @param n.grid number of time points, from \code{xmin} to \code{xmax}, at
-#'  which the parametric curve is evaluated; at least 2. Default 300. The
-#'  semiparametric curve is a step function and is drawn at its own jump
-#'  times.
-#' @param mfrow panel grid of a screen as \code{c(rows, columns)}. If
-#'  \code{NULL} (default), a grid already set with \code{par(mfrow = )} is
-#'  used together with the current margins; failing that, the grid has
-#'  \code{floor(sqrt(n))} rows and enough columns for the \code{n} selected
-#'  events.
-#' @param common.ylim logical; give all panels of a screen the same range,
-#'  the y-axis on the baseline screen and both axes on the Cox--Snell screen,
-#'  instead of scaling each panel on its own. Ignored where \code{ylim} or
-#'  \code{lim.coxsnell} fixes the range. Default \code{FALSE}.
-#' @param ask logical; prompt before each new page. If \code{NULL} (default)
-#'  it is \code{TRUE} when more than one page is drawn on an interactive
-#'  device (see \code{\link[grDevices]{dev.interactive}}).
-#' @param ... further graphical parameters passed to
-#'  \code{\link[graphics]{plot.default}} when each panel is set up, such as
-#'  \code{cex.axis} or \code{las}; they do not reach the curves or the
-#'  legends.
+#'   baseline curves, respectively. The Nelson--Aalen curve is always solid.
+#' @param ref.col,ref.lty colour and line type of the 45-degree reference line.
+#' @param ylim y-axis limits for all baseline panels. If \code{NULL},
+#'   the limits are determined separately for each panel unless
+#'   \code{common.ylim = TRUE}.
+#' @param lim.coxsnell limits applied to both axes of every Cox--Snell panel.
+#'   If \code{NULL}, the limits are determined from the plotted values.
+#' @param xmin,xmax range of the time axis for the baseline plots.
+#'   \code{xmin} must be a single finite non-negative number.
+#'   If \code{xmax} is \code{NULL}, the axis extends to the largest observed
+#'   follow-up time, while each parametric curve ends at the largest observed
+#'   event time for its corresponding cause. Otherwise, \code{xmax} must be
+#'   a finite number greater than \code{xmin}, and the parametric curves
+#'   are evaluated up to that time.
+#' @param xlab,ylab axis labels for the baseline plots. The \code{ylab}
+#'   is also used in the page header. Under the PO link, the plotted
+#'   quantity is baseline odds rather than cumulative hazard.
+#' @param xlab.coxsnell,ylab.coxsnell axis labels for the Cox--Snell plots.
+#'   The \code{xlab.coxsnell} is also used in the page header.
+#' @param legend logical. Whether to display a legend in each panel.
+#' @param legend.pos legend positions. The first value specifies the position
+#'   in baseline panels and the second in Cox--Snell panels. A single value
+#'   is used for both.
+#' @param legend.title optional title for the legends. Defaults to \code{NULL}.
+#' @param lwd line width of the curves. The 45-degree reference line always
+#'   has width 1.
+#' @param main optional title or titles replacing the model case labels
+#'   in the page headers. Values are recycled over the selected cases.
+#' @param n.grid number of evaluation points for the parametric baseline
+#'   curves. Must be a single integer greater than or equal to 2.
+#'   Defaults to 300.
+#' @param mfrow panel layout for each screen, specified as
+#'   \code{c(nrow, ncol)}. If \code{NULL}, the current \code{par("mfrow")}
+#'   setting is used when it has been modified; otherwise, a layout is
+#'   determined automatically.
+#' @param common.ylim logical. Whether to use common axis limits across
+#'   all panels within each screen. For the Cox--Snell screen, the same
+#'   limits are applied to both axes. Ignored when \code{ylim} or
+#'   \code{lim.coxsnell} is specified.
+#' @param ask logical. Whether to prompt before drawing each new page.
+#'   If \code{NULL}, prompting is enabled when multiple pages are drawn
+#'   on an interactive device.
+#' @param ... additional graphical parameters passed to
+#'   \code{\link[graphics]{plot.default}} when setting up each panel.
 #'
 #' @return
-#' Invisibly, a list with one element per selected case, named by its model
-#' label. Each is a list with one element per selected event, named after the
-#' event code (e.g. \code{"event 1"}), holding a component for each screen
-#' drawn:
-#' \describe{
-#'   \item{\code{baseline}}{a list with \code{link} (\code{"PH"} or
-#'     \code{"PO"}), \code{time} (the evaluation grid), \code{parametric}
-#'     (\eqn{\widehat u_k} on that grid) and \code{semiparametric} (the step
-#'     function as a list with \code{time} and \code{u}, or \code{NULL} if it
-#'     could not be computed).}
-#'   \item{\code{resid}}{a data frame with one row per subject: \code{resid},
-#'     the residual (\code{Inf} for competing failures and wherever the model
-#'     is not defined); \code{status}, 1 for an event of this cause and 0
-#'     otherwise; \code{type}, one of \code{"event"}, \code{"censored"} and
-#'     \code{"competing"}; and \code{L}, the truncation point \eqn{L_i}
-#'     (\code{Inf} when the fitted baseline is unbounded). Events dropped
-#'     from the plot are kept here.}
-#' }
-#' The Nelson--Aalen curves are not returned. The plots are produced as a
-#' side effect.
+#' Invisibly returns a list containing the following components.
+#' \itemize{
+#'   \item \code{semi_base_cum_haz_list}: Semiparametric baseline estimates
+#'   for each selected event. Each element contains \code{PH}, the
+#'   Fine--Gray baseline cumulative hazard estimate, and \code{PO},
+#'   the proportional odds baseline estimate. A component is \code{NULL}
+#'   if the corresponding fit fails or returns non-finite values.
 #'
+#'   \item \code{para_base_cum_haz_list}: Parametric baseline estimates
+#'   for each selected model case and event. Each matrix contains
+#'   \code{time} and \code{base_cum}.
+#'
+#'   \item \code{cox_snell_residual_list}: Cox--Snell residual diagnostic
+#'   results for each selected model case and event. Each matrix contains
+#'   \code{residual}, the distinct residual values at event times, and
+#'   \code{NA_estimated_cumhaz}, the corresponding weighted Nelson--Aalen
+#'   estimates. The final row is retained even when it is omitted from
+#'   the plot.
+#' }
+#'
+#' The components corresponding to disabled diagnostics are \code{NULL}.
 #'
 #' @seealso
 #' \code{\link{pcrr}},
 #' \code{\link{print.pcrr}},
 #' \code{\link{summary.pcrr}},
-#' \code{\link{predict.pcrr}}
+#' \code{\link{predict.pcrr}},
+#' \code{\link[cmprsk]{crr}},
+#' \code{\link[timereg]{prop.odds.subdist}}
 #'
 #' @export
 plot.pcrr <- function(x, case = NULL, event = NULL,
@@ -1051,7 +1025,6 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
                       col.par = "black", col.semi = "blue",
                       lty.par = 1, lty.semi = 2,
                       ref.col = "red", ref.lty = 2,
-                      shade.col = "gray93", conf.int = FALSE,
                       ylim = NULL, lim.coxsnell = NULL,
                       xmin = 0, xmax = NULL,
                       xlab = "Time",
@@ -1064,331 +1037,519 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
                       n.grid = 300, mfrow = NULL, common.ylim = FALSE,
                       ask = NULL, ...) {
   
-  ## ------------------------------------------------------------------
-  ## 0. which pages are drawn, and the data they need
-  ## ------------------------------------------------------------------
-  is_flag <- function(v) is.logical(v) && length(v) == 1L && !is.na(v)
-  if (!is_flag(baseline) || !is_flag(coxsnell))
-    stop("`baseline` and `coxsnell` must each be TRUE or FALSE.",
-         call. = FALSE)
-  if (!baseline && !coxsnell)
-    stop("At least one of `baseline` and `coxsnell` must be TRUE.",
-         call. = FALSE)
+  if (!is.logical(baseline) || length(baseline) != 1L || is.na(baseline))
+    stop("`baseline` must be TRUE or FALSE.", call. = FALSE)
   
-  if (is.null(x$x) || is.null(x$delta) || is.null(x$z))
+  if (!is.logical(coxsnell) || length(coxsnell) != 1L || is.na(coxsnell))
+    stop("`coxsnell` must be TRUE or FALSE.", call. = FALSE)
+  
+  if (!baseline && !coxsnell)
+    stop("At least one of `baseline` and `coxsnell` must be TRUE.", call. = FALSE)
+  
+  if (is.null(x$x) || is.null(x$event) || is.null(x$z))
     stop("The original data are not stored in the fitted object, so the ",
          "diagnostics cannot be computed.", call. = FALSE)
   
-  ## one position per page : a rising baseline leaves the lower right free,
-  ## a Cox-Snell curve that drops below y = x leaves the upper left free
-  legend.pos <- rep(legend.pos, length.out = 2)
+  if (!is.numeric(xmin) || length(xmin) != 1L || !is.finite(xmin) || xmin < 0) 
+    stop("`xmin` must be a single finite non-negative number.", call. = FALSE)
   
-  xt    <- as.numeric(x$x)
-  delta <- as.matrix(x$delta)
-  z     <- as.matrix(x$z)
-  P     <- x$p
-  K     <- x$k
-  dist  <- x$distribution
-  tol   <- 1e-12
+  if (!is.null(xmax)) {
+    if (!is.numeric(xmax) || length(xmax) != 1L || !is.finite(xmax)) 
+      stop("`xmax` must be NULL or a single finite number.", call. = FALSE)
+    
+    if (xmax <= xmin) stop("`xmax` must be greater than `xmin`.", call. = FALSE)
+  }
   
-  ## ------------------------------------------------------------------
-  ## 1. case selection : one page pair per case, never overlaid
-  ## ------------------------------------------------------------------
-  avail_case <- seq_len(nrow(x$case_all))
+  if (!is.numeric(n.grid) || length(n.grid) != 1L ||
+      !is.finite(n.grid) || n.grid < 2 || n.grid != floor(n.grid)) 
+    stop("`n.grid` must be a single integer greater than or equal to 2.", call. = FALSE)
+  n.grid <- as.integer(n.grid)
+  
+  if (is.null(xmax) && xmin >= max(x$x))
+    stop("`xmin` must be smaller than the end of follow-up (", format(max(x$x)), ").", call. = FALSE)
+  
+  
+  case_all <- x$case_all
+  n_case_all <- nrow(case_all)
+  
+  avail_case <- seq_len(n_case_all)
+  
   if (is.null(case)) {
     case <- avail_case
   } else {
     if (!is.numeric(case) || length(case) == 0 || any(!is.finite(case)) ||
         any(case != floor(case)) || !all(case %in% avail_case))
       stop("`case` must be one or more of: ",
-           paste(avail_case, collapse = ", "), "\n",
-           paste(x$case_model[avail_case], collapse = "\n"), call. = FALSE)
+           paste(avail_case, collapse = ", "),
+           "\n\nThe possible model cases are as follows :\n",
+           paste(x$case_model, collapse = "\n"), call. = FALSE)
     case <- as.integer(unique(case))
   }
+  
   n_case <- length(case)
   
-  conv <- vapply(case, function(i)
-    isTRUE(x$mle_case_all[[i]]$convergence == 0), logical(1))
-  if (any(!conv))
-    warning("The following model case(s) did not converge. The curves are ",
-            "drawn at these parameter values and should not be interpreted :\n",
-            paste(x$case_model[case[!conv]], collapse = "\n"), call. = FALSE)
   
-  ## ------------------------------------------------------------------
-  ## 2. event selection : one panel each, inside every page
-  ## ------------------------------------------------------------------
   mapping <- x$mapping
   if (is.null(event)) {
     event <- mapping
   } else {
-    if (length(event) == 0 || !all(event %in% mapping))
-      stop("`event` must be one or more of: ",
-           paste(mapping, collapse = ", "), call. = FALSE)
+    if (!is.numeric(event) || length(event) == 0 || !all(event %in% mapping))
+      stop("`event` must be one or more of: ", paste(mapping, collapse = ", "), call. = FALSE)
     event <- unique(event)
   }
-  k_of    <- match(event, mapping)          # internal cause index of each event
-  n_event <- length(event)
   
-  ## the link a case fixes for cause k : alpha = 0 is PH, alpha = 1 is PO
-  link_of <- function(i_case, k) if (x$case_all[i_case, k] == 0) "PH" else "PO"
+  
+  bad <- case[vapply(case, function(j) { x$mle_case_all[[j]]$convergence != 0 }, logical(1))]
+  
+  if (length(bad) > 0) {
+    warning("Case(s) ", paste(bad, collapse = ", "),
+            " did not converge; their diagnostics should not be interpreted.",
+            call. = FALSE)
+  }
+  
+  
+  model <- x$case_model
+  
+  
+  distribution <- x$distribution
+  cencode <- x$cencode
+  
+  K <- x$k
+  P <- x$p
+  ftime <- x$x
+  fevent <- x$event
+  cov <- x$z
+  
+  
+  # re indexing
+  fevent_re <- ifelse(fevent == cencode, 0, match(fevent, mapping)) 
+  data_re <- data.frame(ftime, fevent_re)
+  
+  
+  tol <- 1e-12
+  # 0. define function
+  if (distribution == "gompertz2" || distribution == "gompertz3"){
+    u_k <- function(t, rho, tau, eta, tol) {
+      if (abs(rho) < tol && abs(eta) < tol){
+        u <- tau * t
+      } else if (abs(rho) < tol){
+        u <- tau * exp(eta) * t
+      } else if (abs(eta) < tol){
+        u <- tau * expm1(rho * t) / rho
+      } else {
+        u <- tau * exp(eta) * expm1(eta * expm1(rho * t)) / (rho * eta)
+      }
+      u
+    }
+    
+    res_PH <- function(t, z, rho, tau, eta, beta, tol) {
+      ezb <- exp(z %*% beta)
+      u <- u_k(t, rho, tau, eta, tol)
+      
+      ezb * u
+    }
+    res_PO <- function(t, z, rho, tau, eta, beta, tol) {
+      ezb <- exp(z %*% beta)
+      u <- u_k(t, rho, tau, eta, tol)
+      
+      log1p(ezb * u)
+    }
+    
+    inv_res_PH <- function(u, z, rho, tau, eta, beta, tol) {
+      ezb <- exp(z %*% beta)
+      
+      if (abs(rho) < tol && abs(eta) < tol){
+        
+        return(u / (tau * ezb))
+        
+      } else if (abs(rho) < tol){
+        
+        return(u / (tau * exp(eta) * ezb))
+        
+      } else if (abs(eta) < tol){
+        inner <- rho * u / (tau * ezb)
+        result <- rep(Inf, length(inner))
+        valid <- inner > -1
+        
+        result[valid] <- log1p(inner[valid]) / rho
+        return(result)
+        
+      } else {
+        inner <- exp(eta) + (rho * eta / tau) * u / ezb
+        result <- rep(Inf, length(inner))
+        valid <- inner > 0 & log(inner) / eta > 0
+        
+        result[valid] <- log(log(inner[valid]) / eta) / rho
+        return(result)
+      }
+      
+    }
+    inv_res_PO <- function(u, z, rho, tau, eta, beta, tol) {
+      ezb <- exp(z %*% beta)
+      
+      if (abs(rho) < tol && abs(eta) < tol){
+        
+        return(expm1(u) / (tau * ezb))
+        
+      } else if (abs(rho) < tol){
+        
+        return(expm1(u) / (tau * exp(eta) * ezb))
+        
+      } else if (abs(eta) < tol){
+        inner <- rho * expm1(u) / (tau * ezb)
+        result <- rep(Inf, length(inner))
+        valid <- inner > -1
+        
+        result[valid] <- log1p(inner[valid]) / rho
+        return(result)
+        
+      } else {
+        inner <- exp(eta) + (rho * eta / tau) * expm1(u) / ezb
+        result <- rep(Inf, length(inner))
+        valid <- inner > 0 & log(inner) / eta > 0
+        
+        result[valid] <- log(log(inner[valid]) / eta) / rho
+        return(result)
+      }
+    }
+    
+  } else if (distribution == "logistic"){
+    u_k <- function(t, b, c, p, tol){
+      inner <- - p + p*(1+exp(-b*c))/(1+exp(b*(t-c)))
+      # u <- rep(NaN, length(t))
+      # valid <- 1 + inner > 0
+      # u[valid] <- -log1p(inner[valid])
+      u <- -log1p(inner)
+      u
+    }
+    
+    res_PH <- function(t, z, b, c, p, beta, tol) {
+      ezb <- exp(z %*% beta)
+      u <- u_k(t, b, c, p, tol)
+      
+      ezb * u
+    }
+    res_PO <- function(t, z, b, c, p, beta, tol) {
+      ezb <- exp(z %*% beta)
+      u <- u_k(t, b, c, p, tol)
+      
+      log1p(ezb * u)
+    }
+    
+    inv_res_PH <- function(u, z, b, c, p, beta, tol) {
+      ezb <- exp(z %*% beta)
+      
+      numerator <- p * (1 + exp(- b * c))
+      denominator <- p - 1 + exp(- u / ezb)
+      
+      inner <- numerator / denominator
+      
+      result <- rep(Inf, length(inner))
+      
+      valid <- abs(denominator) > tol & inner > 1
+      
+      result[valid] <- c + log(inner[valid] - 1) / b
+      return(result)
+    }
+    inv_res_PO <- function(u, z, b, c, p, beta, tol) {
+      ezb <- exp(z %*% beta)
+      
+      numerator <- p * (1 + exp(- b * c))
+      denominator <- p - 1 + exp(- expm1(u) / ezb)
+      
+      inner <- numerator / denominator
+      
+      result <- rep(Inf, length(inner))
+      
+      valid <- abs(denominator) > tol & inner > 1
+      
+      result[valid] <- c + log(inner[valid] - 1) / b
+      return(result)
+    }
+    
+  }
+  
+  
+  
+  
+  semi_base_cum_haz_list <- NULL
+  para_base_cum_haz_list <- NULL
+  if (baseline){
+    # 1. parametric vs. semi-parametric
+    
+    
+    
+    had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    
+    if (had_seed) old_seed <- get(".Random.seed", envir = globalenv())
+    
+    on.exit({
+      if (had_seed) {
+        assign(".Random.seed", old_seed, envir = globalenv())
+      } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+        rm(".Random.seed", envir = globalenv())
+      }
+    }, add = TRUE)
+    
+    
+    # i) semi-parametric
+    semi_base_cum_haz_list <- vector("list", length(event))
+    names(semi_base_cum_haz_list) <- paste0("event ", event)
+    
+    for (e in 1:length(event)) {
+      semi_base_cum_haz_list[[e]] <- list(PH = NULL, PO = NULL)
+      
+      fit_PH <- tryCatch(
+        crr(ftime = ftime, fstatus = fevent, cov1 = cov, failcode = event[e], cencode = x$cencode, variance = FALSE),
+        error = function(err) {
+          warning("crr() failed for event ", event[e], ": ", conditionMessage(err), call. = FALSE)
+          NULL
+        })
+
+      if (!is.null(fit_PH)) {
+        if (!isTRUE(fit_PH$converged))
+          warning("crr() did not converge for event ", event[e], "; its curve may be unreliable.", call. = FALSE)
+        if (all(is.finite(fit_PH$bfitj))) {
+          semi_base_cum_haz_list[[e]][[1]] <- cbind(time = fit_PH$uftime, base_cum_haz = cumsum(fit_PH$bfitj))
+        } else {
+          warning("crr() returned non-finite values for event ", event[e], "; its curve is omitted.", call. = FALSE)
+        }
+      }
+ 
+      set.seed(1)
+      fit_PO <- tryCatch(
+        prop.odds.subdist(Event(ftime, fevent_re) ~ cov, data = data_re, cause = match(event[e], mapping), cens.model = "KM", n.sim = 0),
+        error = function(err) {
+          warning("prop.odds.subdist() failed for event ", event[e], ": ", conditionMessage(err), call. = FALSE)
+          NULL
+        })
+      
+      
+      if (!is.null(fit_PO)) {
+        if (all(is.finite(fit_PO$cum[, 1:2]))) {
+          semi_base_cum_haz_list[[e]][[2]] <- cbind(time = fit_PO$cum[, 1], base_cum_odds = fit_PO$cum[, 2])
+        } else {
+          warning("prop.odds.subdist() returned non-finite values for event ", event[e], "; its curve is omitted.", call. = FALSE)
+        }
+      }
+    }
+    
+    # ii) parametric
+    para_base_cum_haz_list <- vector("list", n_case)
+    names(para_base_cum_haz_list) <- model[case]
+    
+    for (l in 1:n_case) {
+      j <- case[l]
+      coef <- x$mle_case_all[[j]]$par
+      
+      para_base_cum_haz_list[[l]] <- vector("list", length(event))
+      names(para_base_cum_haz_list[[l]]) <- paste0("event ", event)
+      
+      
+      for (e in 1:length(event)) {
+        k <- match(event[e], mapping)
+        
+        if (is.null(xmax)) max_time <- max(ftime[fevent == event[e]])
+        else max_time <- xmax
+        times <- seq(xmin, max_time, length.out = n.grid)
+        
+        if (distribution == "gompertz2"){
+          alpha <- coef[(k - 1) * (3 + P) + 1]
+          rho   <- coef[(k - 1) * (3 + P) + 2]
+          tau   <- coef[(k - 1) * (3 + P) + 3]
+          eta   <- 0
+          beta  <- coef[((k - 1) * (3 + P) + 4):(k * (3 + P))]
+          
+          uk <- u_k(times, rho, tau, eta, tol)
+        } else if (distribution == "gompertz3"){
+          alpha <- coef[(k - 1) * (4 + P) + 1]
+          rho   <- coef[(k - 1) * (4 + P) + 2]
+          tau   <- coef[(k - 1) * (4 + P) + 3]
+          eta   <- coef[(k - 1) * (4 + P) + 4]
+          beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+          
+          uk <- u_k(times, rho, tau, eta, tol)
+        } else if (distribution == "logistic"){
+          alpha <- coef[(k - 1) * (4 + P) + 1]
+          b   <- coef[(k - 1) * (4 + P) + 2]
+          c   <- coef[(k - 1) * (4 + P) + 3]
+          p   <- coef[(k - 1) * (4 + P) + 4]
+          beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+          
+          uk <- u_k(times, b, c, p, tol)
+        }
+        
+        para_base_cum_haz_list[[l]][[e]] <- cbind(time = times, base_cum = uk)
+        
+      }
+    }
+  }
+  
+  
+  
+  
+  cox_snell_residual_list <- NULL
+  
+  if (coxsnell) {
+    # 2. cox-snell residual
+    cox_snell_residual_list <- vector("list", n_case)
+    names(cox_snell_residual_list) <- model[case]
+    
+    
+    # KM estimate
+    fit_SC <- survfit(Surv(ftime, fevent == cencode) ~ 1)
+    summ <- summary(fit_SC)
+    SC_KM <- cbind(time = summ$time, surv = summ$surv)
+    
+    G_KM <- function(t) {
+      c(1, SC_KM[, 2])[findInterval(t, SC_KM[, 1], left.open = TRUE) + 1L]
+    }
+    
+    
+    for (l in 1:n_case) {
+      j <- case[l]
+      coef <- x$mle_case_all[[j]]$par
+      
+      cox_snell_residual_list[[l]] <- vector("list", length(event))
+      names(cox_snell_residual_list[[l]]) <- paste0("event ", event)
+      
+      
+      for (e in 1:length(event)) {
+        k <- match(event[e], mapping)
+        
+        if (distribution == "gompertz2"){
+          alpha <- coef[(k - 1) * (3 + P) + 1]
+          rho   <- coef[(k - 1) * (3 + P) + 2]
+          tau   <- coef[(k - 1) * (3 + P) + 3]
+          eta   <- 0
+          beta  <- coef[((k - 1) * (3 + P) + 4):(k * (3 + P))]
+          
+        } else if (distribution == "gompertz3"){
+          alpha <- coef[(k - 1) * (4 + P) + 1]
+          rho   <- coef[(k - 1) * (4 + P) + 2]
+          tau   <- coef[(k - 1) * (4 + P) + 3]
+          eta   <- coef[(k - 1) * (4 + P) + 4]
+          beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+          
+        } else if (distribution == "logistic"){
+          alpha <- coef[(k - 1) * (4 + P) + 1]
+          b   <- coef[(k - 1) * (4 + P) + 2]
+          c   <- coef[(k - 1) * (4 + P) + 3]
+          p   <- coef[(k - 1) * (4 + P) + 4]
+          beta  <- coef[((k - 1) * (4 + P) + 5):(k * (4 + P))]
+          
+        }
+        
+        
+        # Residual
+        t_max <- max(ftime)
+        
+        if (case_all[j,k] == 0) {  # PH
+          if (distribution != "logistic") {
+            residual <- res_PH(ftime, cov, rho, tau, eta, beta, tol)
+            L <- res_PH(t_max, cov, rho, tau, eta, beta, tol)
+          } else {
+            residual <- res_PH(ftime, cov, b, c, p, beta, tol)
+            L <- res_PH(t_max, cov, b, c, p, beta, tol)
+          }
+          
+          
+        } else if (case_all[j,k] == 1) {  # PO
+          if (distribution != "logistic") {
+            residual <- res_PO(ftime, cov, rho, tau, eta, beta, tol)
+            L <- res_PO(t_max, cov, rho, tau, eta, beta, tol)
+          } else {
+            residual <- res_PO(ftime, cov, b, c, p, beta, tol)
+            L <- res_PO(t_max, cov, b, c, p, beta, tol)
+          }
+          
+        }
+        
+        
+        # NA estimate
+        u_j <- sort(unique(residual[fevent == event[e]]))
+        
+        
+        d_R <- numeric(length(u_j))
+        i <- 1
+        for (u in u_j) {
+          d_R[i] <- sum( (residual == u) & (fevent == event[e]) )
+          i <- i + 1
+        }
+        
+        
+        Y_R <- numeric(length(u_j))
+        i <- 1
+        for (u in u_j) {
+          # i)  not weight
+          Y_R[i] <- Y_R[i] + sum( (u <= residual) )
+          
+          
+          # ii) weight
+          weight_subject <- (residual < u) & (u <= L) & (fevent != event[e]) & (fevent != cencode)
+          if (!any(weight_subject)) {
+            i <- i + 1
+            next
+          }
+          
+          # G(inv(u)) / G(X_i)
+          if (case_all[j,k] == 0) {  # PH
+            if (distribution != "logistic") {
+              X_tilde <- inv_res_PH(u, cov[weight_subject,,drop = FALSE], rho, tau, eta, beta, tol)
+            } else {
+              X_tilde <- inv_res_PH(u, cov[weight_subject,,drop = FALSE], b, c, p, beta, tol)
+            }
+          } else if (case_all[j,k] == 1) {  # PO
+            if (distribution != "logistic") {
+              X_tilde <- inv_res_PO(u, cov[weight_subject,,drop = FALSE], rho, tau, eta, beta, tol)
+            } else {
+              X_tilde <- inv_res_PO(u, cov[weight_subject,,drop = FALSE], b, c, p, beta, tol)
+            }
+          }
+          
+          X <- ftime[weight_subject]
+          
+          q <- G_KM(X_tilde) / G_KM(X)
+          
+          Y_R[i] <- Y_R[i] + sum(q)
+          
+          i <- i + 1
+        }
+        
+        delta_H_R <- d_R / Y_R
+        
+        H_R <- cumsum(delta_H_R)
+        
+        cox_snell_residual_list[[l]][[e]] <- cbind(residual = u_j, NA_estimated_cumhaz = H_R)
+        
+      }
+    }
+  }
+  
   
   ## ------------------------------------------------------------------
-  ## 3. time axis of the baseline page
+  ## d1. arguments that only the pages use
   ## ------------------------------------------------------------------
+  ## one position per page : a rising baseline leaves the lower right free,
+  ## a Cox-Snell curve that drops below y = x leaves the upper left free
+  legend.pos <- rep(legend.pos, length.out = 2)
+  
+  ## time axis of the baseline page
+  t_end <- max(ftime)                       # end of follow-up
   if (!is.numeric(xmin) || length(xmin) != 1 || !is.finite(xmin) || xmin < 0)
     stop("`xmin` must be a single non-negative number.", call. = FALSE)
-  if (is.null(xmax)) xmax <- x$maxtime
-  if (!is.numeric(xmax) || length(xmax) != 1 || !is.finite(xmax) ||
-      xmax <= xmin)
+  if (is.null(xmax)) xmax <- t_end
+  if (!is.numeric(xmax) || length(xmax) != 1 || !is.finite(xmax) || xmax <= xmin)
     stop("`xmax` must be a single number larger than `xmin`.", call. = FALSE)
-  if (!is.numeric(n.grid) || length(n.grid) != 1 || !is.finite(n.grid) ||
-      n.grid < 2)
-    stop("`n.grid` must be a single number of at least 2.", call. = FALSE)
-  tgrid <- seq(xmin, xmax, length.out = as.integer(n.grid))
+  
+  n_event <- length(event)
+  k_of    <- match(event, mapping)          # internal cause index of each event
+  
+  ## the link a case fixes for cause k : alpha = 0 is PH, alpha = 1 is PO
+  link_of <- function(i_case, k) if (case_all[i_case, k] == 0) "PH" else "PO"
   
   ## ------------------------------------------------------------------
-  ## 4. parametric baseline u_k(t)
-  ## ------------------------------------------------------------------
-  u_fun <- function(t, pars) {
-    if (dist == "logistic") {
-      b <- pars$b; cc <- pars$c; p <- pars$p
-      inner <- -p + p * (1 + exp(-b * cc)) / (1 + exp(b * (t - cc)))
-      out <- rep(NaN, length(t))
-      ok  <- 1 + inner > 0
-      out[ok] <- -log1p(inner[ok])
-      out
-    } else {
-      rho <- pars$rho; tau <- pars$tau
-      eta <- if (is.null(pars$eta)) 0 else pars$eta
-      if (abs(rho) < tol && abs(eta) < tol)      tau * t
-      else if (abs(rho) < tol)                   tau * exp(eta) * t
-      else if (abs(eta) < tol)                   tau * expm1(rho * t) / rho
-      else tau * exp(eta) * expm1(eta * expm1(rho * t)) / (rho * eta)
-    }
-  }
-  
-  ## limit of u_k. Finite means the fitted CIF is improper, i.e. a cure
-  ## fraction exists, which is what makes L_i finite below.
-  u_inf_fun <- function(pars) {
-    if (dist == "logistic") {
-      p <- pars$p
-      if (p >= 1) Inf else -log1p(-p)
-    } else {
-      rho <- pars$rho; tau <- pars$tau
-      eta <- if (is.null(pars$eta)) 0 else pars$eta
-      if (abs(rho) < tol) Inf
-      else if (abs(eta) < tol) { if (rho < 0) -tau / rho else Inf }
-      else if (rho < 0) tau * (1 - exp(eta)) / (rho * eta)
-      else if (eta < 0) -tau * exp(eta) / (rho * eta)
-      else Inf
-    }
-  }
-  
-  ## pull the parameters of cause k out of a case's coefficient vector
-  get_pars <- function(coefs, k) {
-    if (dist == "gompertz2") {
-      b0 <- (k - 1) * (3 + P)
-      list(alpha = coefs[b0 + 1], rho = coefs[b0 + 2], tau = coefs[b0 + 3],
-           beta = coefs[(b0 + 4):(k * (3 + P))])
-    } else if (dist == "gompertz3") {
-      b0 <- (k - 1) * (4 + P)
-      list(alpha = coefs[b0 + 1], rho = coefs[b0 + 2], tau = coefs[b0 + 3],
-           eta = coefs[b0 + 4], beta = coefs[(b0 + 5):(k * (4 + P))])
-    } else {
-      b0 <- (k - 1) * (4 + P)
-      list(alpha = coefs[b0 + 1], b = coefs[b0 + 2], c = coefs[b0 + 3],
-           p = coefs[b0 + 4], beta = coefs[(b0 + 5):(k * (4 + P))])
-    }
-  }
-  
-  ## ------------------------------------------------------------------
-  ## 5. semiparametric u_k(t), matched to the link of each case
-  ## ------------------------------------------------------------------
-  ##  Both estimators leave the baseline unspecified and return u_k(t) at
-  ##  z = 0 directly, on the same scale as the parametric curve :
-  ##    PH (alpha = 0) : F_k = 1 - exp{-e^{z'b} u_k(t)}, and crr() gives the
-  ##      Breslow-type jumps of u_k, whose running sum is u_k itself.
-  ##    PO (alpha = 1) : F_k/(1 - F_k) = e^{z'b} u_k(t), and the "Baseline"
-  ##      column of prop.odds.subdist() is that baseline odds.
-  ##  Each is fitted to one cause at a time, which is legitimate : a
-  ##  correctly specified model for cause k identifies u_k whatever the
-  ##  other causes do. Matching the estimator to the link keeps a gap
-  ##  between the curves attributable to the baseline; crr() against a PO
-  ##  fit would estimate log(1 + u_k), a different function.
-  fs <- rep(0L, length(xt))                       # 0 = censored, k = cause k
-  for (k in seq_len(K)) fs[delta[, k] == 1] <- k
-  
-  ## a step function running from 0 to the end of follow-up
-  step_curve <- function(tt, uu) {
-    ok <- is.finite(tt) & is.finite(uu)
-    tt <- tt[ok]; uu <- uu[ok]
-    if (length(tt) == 0) return(NULL)
-    if (tt[1] > 0) { tt <- c(0, tt); uu <- c(0, uu) }
-    n <- length(tt)
-    if (x$maxtime > tt[n]) { tt <- c(tt, x$maxtime); uu <- c(uu, uu[n]) }
-    list(time = tt, u = uu)
-  }
-  
-  ## prop.odds.subdist() draws from the RNG on every call and breaks tied
-  ## event times with random jitter. Run it on a fixed stream and restore
-  ## the user's afterwards, so the curve is reproducible and plotting
-  ## leaves the random number stream untouched.
-  keep_seed <- function(expr) {
-    genv <- globalenv()
-    had  <- exists(".Random.seed", envir = genv, inherits = FALSE)
-    if (had) old <- get(".Random.seed", envir = genv, inherits = FALSE)
-    on.exit(if (had) assign(".Random.seed", old, envir = genv)
-            else if (exists(".Random.seed", envir = genv, inherits = FALSE))
-              rm(".Random.seed", envir = genv))
-    set.seed(1L)
-    expr
-  }
-  
-  semi_ph <- function(k, ev) {
-    tryCatch({
-      fg <- crr(ftime = xt, fstatus = fs, cov1 = z, failcode = k,
-                cencode = 0L, variance = FALSE)
-      if (!isTRUE(fg$converged))
-        warning("crr() did not converge for event ", ev,
-                ", so its curve may be unreliable.", call. = FALSE)
-      step_curve(fg$uftime, cumsum(fg$bfitj))
-    }, error = function(err) {
-      warning("crr() failed for event ", ev, " : ", conditionMessage(err),
-              "\nThe semiparametric curve is omitted there.", call. = FALSE)
-      NULL
-    })
-  }
-  
-  semi_po <- function(k, ev) {
-    tryCatch({
-      znm <- paste0("z", seq_len(P))
-      dd  <- data.frame(xt, fs, z)
-      names(dd) <- c("time", "status", znm)
-      fo  <- as.formula(paste("Event(time, status) ~",
-                              paste(znm, collapse = " + ")))
-      po  <- keep_seed(prop.odds.subdist(fo, data = dd, cause = k,
-                                         n.sim = 0, baselinevar = 0))
-      step_curve(po$cum[, "time"], po$cum[, "Baseline"])
-    }, error = function(err) {
-      warning("prop.odds.subdist() failed for event ", ev, " : ",
-              conditionMessage(err),
-              "\nThe semiparametric curve is omitted there.", call. = FALSE)
-      NULL
-    })
-  }
-  
-  ## fit only the (event, link) pairs that the selected cases use
-  semi <- NULL
-  if (baseline) {
-    need <- matrix(FALSE, n_event, 2, dimnames = list(NULL, c("PH", "PO")))
-    for (i_case in case)
-      for (e in seq_len(n_event)) need[e, link_of(i_case, k_of[e])] <- TRUE
-    semi <- lapply(seq_len(n_event), function(e)
-      list(PH = if (need[e, "PH"]) semi_ph(k_of[e], event[e]),
-           PO = if (need[e, "PO"]) semi_po(k_of[e], event[e])))
-  }
-  
-  ## ------------------------------------------------------------------
-  ## 6. Cox-Snell residuals and the risk set they enter
-  ## ------------------------------------------------------------------
-  any_event <- rowSums(delta) > 0
-  
-  cs_resid <- function(pars, k) {
-    ezb <- as.numeric(exp(z %*% pars$beta))
-    u   <- u_fun(xt, pars)
-    a   <- as.numeric(pars$alpha)
-    
-    if (abs(a) < 1e-8) {
-      r <- ezb * u
-    } else {
-      base <- 1 + a * ezb * u
-      r <- rep(Inf, length(u))                 # outside the GOR domain
-      ok <- is.finite(u) & base > 0
-      r[ok] <- log(base[ok]) / a
-    }
-    r[!is.finite(u)] <- Inf
-    
-    ## event for cause k / censored without event / competing failure
-    is_k    <- delta[, k] == 1
-    is_comp <- any_event & !is_k
-    status  <- as.numeric(is_k)
-    r[is_comp] <- Inf                          # still at risk, forever
-    
-    ## L_i, the point past which subject i's residual is no longer Exp(1)
-    uinf <- u_inf_fun(pars)
-    L <- if (!is.finite(uinf)) rep(Inf, length(r))
-    else if (abs(a) < 1e-8) ezb * uinf
-    else log1p(a * ezb * uinf) / a
-    
-    data.frame(resid = r, status = status,
-               type = ifelse(is_k, "event",
-                             ifelse(is_comp, "competing", "censored")),
-               L = L, stringsAsFactors = FALSE)
-  }
-  
-  ## Nelson-Aalen estimate of the cumulative hazard of the residuals.
-  ## Residuals censored at infinity are placed beyond every event so that
-  ## they stay in the risk set throughout.
-  na_curve <- function(cs, lab) {
-    bad <- cs$status == 1 & !is.finite(cs$resid)
-    if (any(bad)) {
-      warning(lab, "\n", sum(bad), " observed event(s) fall outside the ",
-              "fitted model's valid range and were dropped from the ",
-              "residual plot.", call. = FALSE)
-      cs <- cs[!bad, , drop = FALSE]
-    }
-    if (!any(cs$status == 1)) return(NULL)
-    fin <- cs$resid[is.finite(cs$resid)]
-    far <- if (length(fin)) max(fin) * 1.05 + 1 else 1
-    rr  <- cs$resid
-    rr[!is.finite(rr)] <- far
-    
-    fit  <- survfit(Surv(rr, cs$status) ~ 1, type = "fleming-harrington")
-    keep <- fit$n.event > 0
-    list(time = fit$time[keep],
-         H    = -log(fit$surv[keep]),
-         lo   = -log(fit$upper[keep]),
-         hi   = -log(fit$lower[keep]),
-         Lmin = suppressWarnings(min(cs$L)))
-  }
-  
-  ## ------------------------------------------------------------------
-  ## 7. everything the pages draw, computed before the first page
-  ## ------------------------------------------------------------------
-  out <- vector("list", n_case)             # returned
-  nac <- vector("list", n_case)             # Nelson-Aalen curves, drawn only
-  names(out) <- x$case_model[case]
-  
-  for (ci in seq_len(n_case)) {
-    i_case <- case[ci]
-    coefs  <- x$mle_case_all[[i_case]]$par
-    out[[ci]] <- vector("list", n_event)
-    nac[[ci]] <- vector("list", n_event)
-    names(out[[ci]]) <- paste("event", event)
-    
-    for (e in seq_len(n_event)) {
-      k    <- k_of[e]
-      lnk  <- link_of(i_case, k)
-      pars <- get_pars(coefs, k)
-      item <- list()
-      
-      if (baseline)
-        item$baseline <- list(link = lnk, time = tgrid,
-                              parametric = u_fun(tgrid, pars),
-                              semiparametric = semi[[e]][[lnk]])
-      if (coxsnell) {
-        cs <- cs_resid(pars, k)
-        item$resid <- cs
-        ## `[<-` with list() : a NULL curve must not drop the slot
-        nac[[ci]][e] <- list(na_curve(cs, paste0(x$case_model[i_case],
-                                                 "\nevent ", event[e])))
-      }
-      out[[ci]][[e]] <- item
-    }
-  }
-  
-  ## ------------------------------------------------------------------
-  ## 8. panel grid : the selected events on one page
+  ## d2. panel grid : the selected events on one page
   ## ------------------------------------------------------------------
   grid_dim <- function(n) {
     nr <- max(1L, as.integer(floor(sqrt(n))))
@@ -1410,7 +1571,7 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
   per_page <- dims[1] * dims[2]
   
   ## ------------------------------------------------------------------
-  ## 9. device set-up
+  ## d3. device set-up
   ## ------------------------------------------------------------------
   n_quant <- baseline + coxsnell
   n_page  <- n_case * n_quant * ceiling(n_event / per_page)
@@ -1425,20 +1586,45 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
   }
   
   ## ------------------------------------------------------------------
-  ## 10. small helpers
+  ## d4. small helpers
   ## ------------------------------------------------------------------
   ## largest finite value, or NA when there is none
   top_of <- function(v) {
     v <- v[is.finite(v)]
     if (length(v) == 0 || max(v) <= 0) NA_real_ else max(v)
   }
-  base_top <- function(b) {
-    sp <- b$semiparametric
-    top_of(c(b$parametric, if (!is.null(sp)) sp$u[sp$time <= xmax]))
+  
+  ## the semiparametric estimate of one event under one link, drawn as a
+  ## step function running from 0 to the end of follow-up. NULL when the
+  ## list holds no curve there.
+  semi_curve <- function(e, lnk) {
+    m <- semi_base_cum_haz_list[[e]][[lnk]]
+    if (is.null(m) || NROW(m) == 0) return(NULL)
+    tt <- m[, 1]; uu <- m[, 2]
+    ok <- is.finite(tt) & is.finite(uu)
+    tt <- tt[ok]; uu <- uu[ok]
+    if (length(tt) == 0) return(NULL)
+    if (tt[1] > 0) { tt <- c(0, tt); uu <- c(0, uu) }
+    n <- length(tt)
+    if (t_end > tt[n]) { tt <- c(tt, t_end); uu <- c(uu, uu[n]) }
+    list(time = tt, u = uu)
   }
+  
+  base_top <- function(pm, sp) {
+    top_of(c(pm[pm[, 1] <= xmax, 2], if (!is.null(sp)) sp$u[sp$time <= xmax]))
+  }
+  
+  
+  # cs_top <- function(g) {
+  #   if (is.null(g) || NROW(g) == 0) return(NA_real_)    
+  #   top_of(c(g[, 1], g[, 2]))  
+  # }
+  ## the last jump is not drawn (see draw_cs_panel), so it does not set the
+  ## axis range either
   cs_top <- function(g) {
-    if (is.null(g)) return(NA_real_)
-    top_of(c(g$time, g$H, if (isTRUE(conf.int)) g$hi))
+    if (is.null(g) || NROW(g) == 0) return(NA_real_)
+    if (NROW(g) > 1) g <- g[-NROW(g), , drop = FALSE]
+    top_of(c(g[, 1], g[, 2]))
   }
   
   ## A legend is laid out once, at the device size of the moment, and its
@@ -1482,26 +1668,28 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
       mtext(t2, side = 3, outer = TRUE, line = 0.35 / cx, cex = 0.95 / cx)
   }
   
+  ## ------------------------------------------------------------------
+  ## d5. panels
+  ## ------------------------------------------------------------------
   ## one baseline panel : parametric u_k against the semiparametric one
-  draw_base_panel <- function(b, main_p, ylim_p) {
+  draw_base_panel <- function(pm, sp, lnk, main_p, ylim_p) {
     plot(c(xmin, xmax), ylim_p, type = "n",
          xlab = xlab, ylab = ylab, main = main_p, ...)
     
-    sp <- b$semiparametric
     if (!is.null(sp))
       lines(sp$time, sp$u, type = "s", col = col.semi, lty = lty.semi,
             lwd = lwd)
-    lines(b$time, b$parametric, col = col.par, lty = lty.par, lwd = lwd)
+    lines(pm[, 1], pm[, 2], col = col.par, lty = lty.par, lwd = lwd)
     
     if (isTRUE(legend)) {
       has_sp   <- !is.null(sp)
-      semi_lab <- if (b$link == "PH") "Fine-Gray (semiparametric)"
+      semi_lab <- if (lnk == "PH") "Fine-Gray (semiparametric)"
       else "Proportional odds (semiparametric)"
       draw_legend(legend.pos[1],
-                  labels = c(c(gompertz2 = "Gompertz (2-parameter)",
-                               gompertz3 = "Gompertz (3-parameter)",
-                               logistic  = "Modified logistic")[[dist]],
-                             if (has_sp) semi_lab),
+                  labels = c(paste0(
+                    paste0(toupper(substr(distribution, 1, 1)),
+                           substr(distribution, 2, nchar(distribution)))," (parametric)"
+                  ), if (has_sp) semi_lab),
                   cols = c(col.par, if (has_sp) col.semi),
                   ltys = c(lty.par, if (has_sp) lty.semi),
                   lwds = lwd)
@@ -1510,7 +1698,7 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
   
   ## one Cox-Snell panel : Nelson-Aalen of the residuals against y = x
   draw_cs_panel <- function(g, main_p, lim_p) {
-    if (is.null(g)) {
+    if (is.null(g) || NROW(g) == 0 || !any(is.finite(g[, 2]))) {
       plot.new()
       title(main = main_p)
       mtext("no usable events for this cause", side = 3, line = -2,
@@ -1521,42 +1709,25 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     plot(lim_p, lim_p, type = "n",
          xlab = xlab.coxsnell, ylab = ylab.coxsnell, main = main_p, ...)
     
-    ## The 45-degree line is exact only while no residual has yet been
-    ## relocated to +Inf, that is on u < min_i L_i. Shade that region and
-    ## read the plot inside it.
-    Lm    <- g$Lmin
-    valid <- is.finite(Lm) && Lm > 0
-    if (valid && !is.na(shade.col)) {
-      usr <- par("usr")
-      rect(usr[1], usr[3], min(Lm, usr[2]), usr[4], col = shade.col,
-           border = NA)
-      box()
-    }
-    if (valid) abline(v = Lm, col = "gray55", lty = 3)
     abline(0, 1, col = ref.col, lty = ref.lty)
     
-    if (isTRUE(conf.int)) {
-      lines(g$time, g$lo, type = "s", col = col.par, lty = 3, lwd = 1)
-      lines(g$time, g$hi, type = "s", col = col.par, lty = 3, lwd = 1)
-    }
-    lines(g$time, g$H, type = "s", col = col.par, lwd = lwd)
     
-    if (isTRUE(legend)) {
-      lg  <- c("Nelson-Aalen of residuals", "45-degree line")
-      lgc <- c(col.par, ref.col); lgl <- c(1, ref.lty); lgw <- c(lwd, 1)
-      if (valid) {
-        lg  <- c(lg, sprintf("valid up to min L = %.3g", Lm))
-        lgc <- c(lgc, "gray55"); lgl <- c(lgl, 3); lgw <- c(lgw, 1)
-      }
-      draw_legend(legend.pos[2], labels = lg, cols = lgc, ltys = lgl,
-                  lwds = lgw)
-    }
-    if (valid)
-      mtext("judge inside the shaded region only", side = 3, line = 0.15,
-            adj = 1, cex = 0.7, col = "gray30")
+    # lines(g[, 1], g[, 2], type = "s", col = col.par, lwd = lwd)
+    
+    g_plot <- if (NROW(g) > 1) g[-NROW(g), , drop = FALSE] else g
+    lines(g_plot[, 1], g_plot[, 2], type = "s", col = col.par, lwd = lwd)
+    
+    
+    if (isTRUE(legend))
+      draw_legend(legend.pos[2],
+                  labels = c("Nelson-Aalen of residuals", "45-degree line"),
+                  cols = c(col.par, ref.col), ltys = c(1, ref.lty),
+                  lwds = c(lwd, 1))
   }
   
-  ## one page : every selected event of one case, for one quantity
+  ## ------------------------------------------------------------------
+  ## d6. one page : every selected event of one case, for one quantity
+  ## ------------------------------------------------------------------
   draw_page <- function(ci, page_title, kind) {
     
     ## re-setting mfrow rewinds the panel counter, so the page below
@@ -1569,6 +1740,15 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     
     is_base <- identical(kind, "baseline")
     quant   <- if (is_base) ylab else xlab.coxsnell
+    lnk     <- vapply(k_of, function(k) link_of(case[ci], k), character(1))
+    
+    ## what each panel draws
+    if (is_base) {
+      pm <- para_base_cum_haz_list[[ci]]
+      sp <- lapply(seq_len(n_event), function(e) semi_curve(e, lnk[e]))
+    } else {
+      g <- cox_snell_residual_list[[ci]]
+    }
     
     ## axis limits : fixed by the user, shared by the page, or per panel.
     ## On the Cox-Snell page one limit serves both axes, so y = x stays
@@ -1576,8 +1756,8 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     fixed <- if (is_base) ylim else lim.coxsnell
     pad   <- if (is_base) 1.05 else 1
     tops  <- vapply(seq_len(n_event), function(e)
-      if (is_base) base_top(out[[ci]][[e]]$baseline)
-      else cs_top(nac[[ci]][[e]]), numeric(1))
+      if (is_base) base_top(pm[[e]], sp[[e]]) else cs_top(g[[e]]),
+      numeric(1))
     
     if (!is.null(fixed)) {
       lims <- rep(list(fixed), n_event)
@@ -1590,10 +1770,9 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
     }
     
     for (e in seq_len(n_event)) {
-      main_p <- paste0("event ", event[e], " (",
-                       link_of(case[ci], k_of[e]), ")")
-      if (is_base) draw_base_panel(out[[ci]][[e]]$baseline, main_p, lims[[e]])
-      else         draw_cs_panel(nac[[ci]][[e]], main_p, lims[[e]])
+      main_p <- paste0("event ", event[e], " (", lnk[e], ")")
+      if (is_base) draw_base_panel(pm[[e]], sp[[e]], lnk[e], main_p, lims[[e]])
+      else         draw_cs_panel(g[[e]], main_p, lims[[e]])
       
       ## the header belongs to the device page, so it is redrawn
       ## whenever the panels spill over onto another one
@@ -1602,19 +1781,28 @@ plot.pcrr <- function(x, case = NULL, event = NULL,
   }
   
   ## ------------------------------------------------------------------
-  ## 11. (case, baseline) then (case, Cox-Snell)
+  ## d7. (case, baseline) then (case, Cox-Snell)
   ## ------------------------------------------------------------------
   for (ci in seq_len(n_case)) {
-    ttl <- if (is.null(main)) x$case_model[case[ci]]
+    ttl <- if (is.null(main)) model[case[ci]]
     else rep(main, length.out = n_case)[ci]
     
-    if (baseline) draw_page(ci, ttl, "baseline")
-    if (coxsnell) draw_page(ci, ttl, "coxsnell")
+    if (baseline) {
+      draw_page(ci, ttl, "baseline")
+    }
+    
+    if (coxsnell) {
+      draw_page(ci, ttl, "coxsnell")
+    }
   }
   
-  invisible(out)
+  
+  
+  out <- list(semi_base_cum_haz_list = semi_base_cum_haz_list,
+              para_base_cum_haz_list = para_base_cum_haz_list,
+              cox_snell_residual_list = cox_snell_residual_list)
+  
 }
-
 
 
 #' Summarize a Fitted Parametric Competing Risks Regression Model
@@ -2265,16 +2453,16 @@ predict.pcrr <- function(object, cov, times = NULL, case = NULL, event = NULL, .
   n_case <- length(case)
   
   
+  
   mapping <- object$mapping
   if (is.null(event)) {
     event <- mapping
   } else {
-    if (all(event %in% mapping)) {
-      event <- unique(event)
-    } else {
+    if (!is.numeric(event) || length(event) == 0 || !all(event %in% mapping))
       stop("`event` must be one or more of: ", paste(mapping, collapse = ", "), call. = FALSE)
-    }
+    event <- unique(event)
   }
+  
   
   
   model <- object$case_model
@@ -3323,17 +3511,17 @@ cure.pcrr <- function(object, cov, case = NULL, event = NULL, ...){
   
   n_case <- length(case)
   
-  
+
   mapping <- object$mapping
   if (is.null(event)) {
     event <- mapping
   } else {
-    if (all(event %in% mapping)) {
-      event <- unique(event)
-    } else {
+    if (!is.numeric(event) || length(event) == 0 || !all(event %in% mapping))
       stop("`event` must be one or more of: ", paste(mapping, collapse = ", "), call. = FALSE)
-    }
+    event <- unique(event)
   }
+  
+  
 
   
   model <- object$case_model

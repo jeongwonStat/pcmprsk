@@ -16,8 +16,6 @@
   lty.semi = 2,
   ref.col = "red",
   ref.lty = 2,
-  shade.col = "gray93",
-  conf.int = FALSE,
   ylim = NULL,
   lim.coxsnell = NULL,
   xmin = 0,
@@ -39,240 +37,208 @@
 )
 }
 \arguments{
-\item{x}{an object of class \code{"pcrr"}. It must store the original data
-(components \code{x}, \code{delta} and \code{z}); otherwise an error is
-raised.}
+\item{x}{an object of class \code{"pcrr"}. The original data must be
+stored in the object as \code{x}, \code{event}, and \code{z}.}
 
-\item{case}{integer vector selecting model cases, numbered as shown by
-\code{\link{print.pcrr}}. Cases are drawn in the order given and
-duplicates are dropped. If \code{NULL} (default) every case is drawn.}
+\item{case}{integer vector specifying the model cases to plot, as numbered
+in \code{\link{print.pcrr}}. By default, all available cases are selected.
+Duplicates are removed, and plots follow the order supplied.}
 
-\item{event}{vector of event codes, as stored in \code{x$mapping}. If
-\code{NULL} (default) every event is drawn. Supplying \code{event} keeps
-only those events, in the order given; the case selection is unaffected.}
+\item{event}{numeric vector specifying the event codes to plot, as stored
+in \code{x$mapping}. By default, all events are selected. Duplicates
+are removed, and plots follow the order supplied.}
 
-\item{baseline, coxsnell}{logical; draw the baseline screen and the
-Cox--Snell screen respectively. Both default to \code{TRUE}, and at least
-one must be. A screen that is switched off is not computed either
-(\code{baseline = FALSE} skips the semiparametric fits) and has no
-component in the returned list.}
+\item{baseline, coxsnell}{logical. Whether to draw the baseline diagnostic
+and Cox--Snell residual diagnostic, respectively. Both default to
+\code{TRUE}. At least one must be enabled. A disabled diagnostic is
+not computed, and its corresponding returned component is \code{NULL}.}
 
-\item{col.par}{colour of the parametric curve on the baseline screen, and of
-the Nelson--Aalen curve and its limits on the Cox--Snell screen.}
+\item{col.par}{colour of the parametric baseline curve and the
+Nelson--Aalen estimate in the Cox--Snell plot.}
 
-\item{col.semi}{colour of the semiparametric curve on the baseline screen.}
+\item{col.semi}{colour of the semiparametric baseline curve.}
 
 \item{lty.par, lty.semi}{line types of the parametric and semiparametric
-curves on the baseline screen.}
+baseline curves, respectively. The Nelson--Aalen curve is always solid.}
 
-\item{ref.col, ref.lty}{colour and line type of the 45-degree line on the
-Cox--Snell screen.}
+\item{ref.col, ref.lty}{colour and line type of the 45-degree reference line.}
 
-\item{shade.col}{fill colour of the region in which the 45-degree line is
-exact. \code{NA} suppresses the shading; the dotted line at its edge is
-still drawn.}
+\item{ylim}{y-axis limits for all baseline panels. If \code{NULL},
+the limits are determined separately for each panel unless
+\code{common.ylim = TRUE}.}
 
-\item{conf.int}{logical; add pointwise limits at level 0.95, as dotted
-lines, to the Nelson--Aalen estimate on the Cox--Snell screen. The limits
-then enter the automatic axis range. Default \code{FALSE}.}
+\item{lim.coxsnell}{limits applied to both axes of every Cox--Snell panel.
+If \code{NULL}, the limits are determined from the plotted values.}
 
-\item{ylim}{y-axis limits applied to every baseline panel. If \code{NULL}
-(default) each panel runs from 0 to 1.05 times the largest finite value
-of its two curves on the time axis; see also \code{common.ylim}.}
+\item{xmin, xmax}{range of the time axis for the baseline plots.
+\code{xmin} must be a single finite non-negative number.
+If \code{xmax} is \code{NULL}, the axis extends to the largest observed
+follow-up time, while each parametric curve ends at the largest observed
+event time for its corresponding cause. Otherwise, \code{xmax} must be
+a finite number greater than \code{xmin}, and the parametric curves
+are evaluated up to that time.}
 
-\item{lim.coxsnell}{limits of the Cox--Snell panels, applied to both axes so
-that the 45-degree line runs corner to corner. If \code{NULL} (default)
-each panel runs from 0 to the largest event residual or estimated
-cumulative hazard, the upper limit included when \code{conf.int = TRUE};
-see also \code{common.ylim}.}
+\item{xlab, ylab}{axis labels for the baseline plots. The \code{ylab}
+is also used in the page header. Under the PO link, the plotted
+quantity is baseline odds rather than cumulative hazard.}
 
-\item{xmin, xmax}{range of the time axis, shared by every panel of the
-baseline screen; the Cox--Snell screen is on the residual scale and is set
-by \code{lim.coxsnell}. \code{xmin} must be a single non-negative number.
-If \code{xmax} is \code{NULL} (default), \code{x$maxtime}, the end of
-follow-up, is used. Otherwise, \code{xmax} must be a single finite number
-larger than \code{xmin}.}
+\item{xlab.coxsnell, ylab.coxsnell}{axis labels for the Cox--Snell plots.
+The \code{xlab.coxsnell} is also used in the page header.}
 
-\item{xlab, ylab}{axis labels of the baseline panels; \code{ylab} also
-appears in the header of the baseline screen. Under a PO link the curve
-is the baseline odds rather than a cumulative hazard, and the label is
-not adapted to the link, so set it when PO cases are drawn.}
+\item{legend}{logical. Whether to display a legend in each panel.}
 
-\item{xlab.coxsnell, ylab.coxsnell}{axis labels of the Cox--Snell panels;
-\code{xlab.coxsnell} also appears in the header of the Cox--Snell screen.}
+\item{legend.pos}{legend positions. The first value specifies the position
+in baseline panels and the second in Cox--Snell panels. A single value
+is used for both.}
 
-\item{legend}{logical; draw a legend on each panel. On a screen device the
-legend is laid out again whenever the plot is redrawn at another size,
-and shrunk when the panel is narrower than its text.}
+\item{legend.title}{optional title for the legends. Defaults to \code{NULL}.}
 
-\item{legend.pos}{legend positions as \code{\link[graphics]{legend}}
-keywords, the first for the baseline screen and the second for the
-Cox--Snell screen; a single value serves both. The defaults suit a rising
-baseline and a residual curve on or below the diagonal.}
+\item{lwd}{line width of the curves. The 45-degree reference line always
+has width 1.}
 
-\item{legend.title}{title of the legends; \code{NULL} (default) for none.}
+\item{main}{optional title or titles replacing the model case labels
+in the page headers. Values are recycled over the selected cases.}
 
-\item{lwd}{line width of the curves on both screens.}
+\item{n.grid}{number of evaluation points for the parametric baseline
+curves. Must be a single integer greater than or equal to 2.
+Defaults to 300.}
 
-\item{main}{title(s) replacing the case label in the screen headers,
-recycled over the selected cases so that each element titles one case's
-screens. If \code{NULL} (default) the case label is used. Panel titles
-are not affected.}
+\item{mfrow}{panel layout for each screen, specified as
+\code{c(nrow, ncol)}. If \code{NULL}, the current \code{par("mfrow")}
+setting is used when it has been modified; otherwise, a layout is
+determined automatically.}
 
-\item{n.grid}{number of time points, from \code{xmin} to \code{xmax}, at
-which the parametric curve is evaluated; at least 2. Default 300. The
-semiparametric curve is a step function and is drawn at its own jump
-times.}
+\item{common.ylim}{logical. Whether to use common axis limits across
+all panels within each screen. For the Cox--Snell screen, the same
+limits are applied to both axes. Ignored when \code{ylim} or
+\code{lim.coxsnell} is specified.}
 
-\item{mfrow}{panel grid of a screen as \code{c(rows, columns)}. If
-\code{NULL} (default), a grid already set with \code{par(mfrow = )} is
-used together with the current margins; failing that, the grid has
-\code{floor(sqrt(n))} rows and enough columns for the \code{n} selected
-events.}
+\item{ask}{logical. Whether to prompt before drawing each new page.
+If \code{NULL}, prompting is enabled when multiple pages are drawn
+on an interactive device.}
 
-\item{common.ylim}{logical; give all panels of a screen the same range,
-the y-axis on the baseline screen and both axes on the Cox--Snell screen,
-instead of scaling each panel on its own. Ignored where \code{ylim} or
-\code{lim.coxsnell} fixes the range. Default \code{FALSE}.}
-
-\item{ask}{logical; prompt before each new page. If \code{NULL} (default)
-it is \code{TRUE} when more than one page is drawn on an interactive
-device (see \code{\link[grDevices]{dev.interactive}}).}
-
-\item{...}{further graphical parameters passed to
-\code{\link[graphics]{plot.default}} when each panel is set up, such as
-\code{cex.axis} or \code{las}; they do not reach the curves or the
-legends.}
+\item{...}{additional graphical parameters passed to
+\code{\link[graphics]{plot.default}} when setting up each panel.}
 }
 \value{
-Invisibly, a list with one element per selected case, named by its model
-label. Each is a list with one element per selected event, named after the
-event code (e.g. \code{"event 1"}), holding a component for each screen
-drawn:
-\describe{
-\item{\code{baseline}}{a list with \code{link} (\code{"PH"} or
-\code{"PO"}), \code{time} (the evaluation grid), \code{parametric}
-(\eqn{\widehat u_k} on that grid) and \code{semiparametric} (the step
-function as a list with \code{time} and \code{u}, or \code{NULL} if it
-could not be computed).}
-\item{\code{resid}}{a data frame with one row per subject: \code{resid},
-the residual (\code{Inf} for competing failures and wherever the model
-is not defined); \code{status}, 1 for an event of this cause and 0
-otherwise; \code{type}, one of \code{"event"}, \code{"censored"} and
-\code{"competing"}; and \code{L}, the truncation point \eqn{L_i}
-(\code{Inf} when the fitted baseline is unbounded). Events dropped
-from the plot are kept here.}
+Invisibly returns a list containing the following components.
+\itemize{
+\item \code{semi_base_cum_haz_list}: Semiparametric baseline estimates
+for each selected event. Each element contains \code{PH}, the
+Fine--Gray baseline cumulative hazard estimate, and \code{PO},
+the proportional odds baseline estimate. A component is \code{NULL}
+if the corresponding fit fails or returns non-finite values.
+
+\item \code{para_base_cum_haz_list}: Parametric baseline estimates
+for each selected model case and event. Each matrix contains
+\code{time} and \code{base_cum}.
+
+\item \code{cox_snell_residual_list}: Cox--Snell residual diagnostic
+results for each selected model case and event. Each matrix contains
+\code{residual}, the distinct residual values at event times, and
+\code{NA_estimated_cumhaz}, the corresponding weighted Nelson--Aalen
+estimates. The final row is retained even when it is omitted from
+the plot.
 }
-The Nelson--Aalen curves are not returned. The plots are produced as a
-side effect.
+
+The components corresponding to disabled diagnostics are \code{NULL}.
 }
 \description{
-Up to two diagnostic screens per model case, each with one panel per
-selected event. The baseline screen draws the fitted baseline
-\eqn{u_k(t)} against a semiparametric estimate that assumes the same link:
-Fine--Gray under proportional hazards (PH), a proportional odds
-subdistribution model under proportional odds (PO). The Cox--Snell screen
-draws the Nelson--Aalen estimate of the cumulative hazard of the Cox--Snell
-residuals against the 45-degree line. For each case the baseline screen
-comes first; either screen can be switched off with \code{baseline} or
-\code{coxsnell}.
+Draws diagnostic plots for selected model cases and events of a fitted
+\code{"pcrr"} object. Two types of diagnostics are available:
+a baseline comparison and a Cox--Snell residual plot.
+Either plot can be omitted using \code{baseline} or \code{coxsnell}.
+The underlying curves are returned invisibly.
 }
 \details{
-\strong{Baseline screen: against a semiparametric fit of the same link.}
-For each event the fitted \eqn{u_k(t)} is drawn against a semiparametric
-estimate of the same quantity, and \emph{which} estimate is used follows the
-link that the case fixes:
-\describe{
-\item{PH (\eqn{\alpha_k = 0})}{\eqn{\Lambda^{CI}_k(t;\mathbf 0) = u_k(t)},
-so \eqn{u_k(t)} is the baseline cumulative subdistribution hazard and
-the reference is its Breslow-type estimate from
-\code{\link[cmprsk]{crr}} (Fine and Gray, 1999), as in Jeong and Fine
-(2007, Fig. 2).}
-\item{PO (\eqn{\alpha_k = 1})}{\eqn{F_k/(1-F_k) =
-    e^{\mathbf z^{\top}\boldsymbol\beta_k}u_k(t)}, so the baseline odds is
-\eqn{u_k(t)} itself, and the reference is the \code{Baseline} column of
-the \code{cum} component of \code{\link[timereg]{prop.odds.subdist}}.}
+\strong{Baseline diagnostic.}
+Compares the fitted parametric baseline function with a semiparametric
+estimate for each selected event. Both are evaluated at zero covariates.
+The semiparametric reference is obtained using \code{\link[cmprsk]{crr}}
+for the proportional hazards (PH) link and
+\code{\link[timereg]{prop.odds.subdist}} for the proportional odds (PO)
+link. Both reference estimates are computed, but only the one corresponding
+to the link specified by each model case is displayed.
+
+The comparison helps assess whether the chosen baseline distribution
+adequately describes the data. Under the PO link, the baseline function
+represents the baseline odds rather than the baseline cumulative hazard.
+
+\strong{Cox--Snell residual diagnostic.}
+For cause \eqn{k}, the Cox--Snell residual of subject \eqn{i} is calculated
+by evaluating the fitted cumulative subdistribution hazard at the observed
+follow-up time:
+\deqn{
+  r_{ki} = \widehat{\Lambda}_{ki}(X_i),
+  \qquad X_i = \min(T_i, C_i).
 }
-Both estimators therefore return \eqn{u_k(t)} directly and no transformation
-is applied to either curve. Both are evaluated at
-\eqn{\mathbf z = \mathbf 0}, so no profile has to be chosen, and both are
-fitted to cause \eqn{k} alone with the covariates of the parametric model.
-\code{prop.odds.subdist()} draws random numbers, breaking tied event times
-with random jitter, so it is run with a fixed seed and the user's random
-number stream is restored afterwards: the curve is reproducible and
-\code{.Random.seed} is left as it was.
+Residuals are calculated for all subjects, including those who experience
+the event of interest, a competing event, or censoring.
 
-Matching the estimator to the link is what keeps this panel a check on the
-\emph{baseline alone}. Comparing a proportional odds fit against
-\code{crr}, which assumes proportional hazards, would put a second source
-of discrepancy into the same picture and leave a gap uninterpretable.
+The diagnostic plot compares the weighted Nelson--Aalen estimate of the
+cumulative hazard of the residuals with the 45-degree line. At each
+distinct residual value \eqn{u_j} corresponding to an event of interest,
+the estimate is updated using the number of events and the weighted
+risk-set size.
 
-This is the primary diagnostic: its reference is nonparametric in the
-baseline and covers the whole observed range. Curvature throughout points at
-a misspecified baseline; a gap opening only in the tail points at the
-extrapolation rather than the fit. The semiparametric curve ends at the end
-of follow-up, so with a larger \code{xmax} only the parametric curve
-continues. For cumulative incidence curves at chosen covariate profiles see
-\code{\link{predict.pcrr}}.
+Subjects contribute to the risk set while their residuals have not yet
+been exceeded. Subjects experiencing a competing event can remain in the
+risk set beyond their observed residual, with an inverse-probability-of-
+censoring weight
+\deqn{
+  q_{ki}(u) =
+  \frac{\widehat{G}\{\widehat{\Lambda}_{ki}^{-1}(u)\}}
+       {\widehat{G}(X_i)}.
+}
+Here, \eqn{\widehat{G}(t)} is the Kaplan--Meier estimate of the censoring
+survival function, evaluated at the left limit and estimated without
+covariates.
 
-\strong{Cox--Snell screen.}
-The residual of subject \eqn{i} for cause \eqn{k} is the fitted cumulative
-subdistribution hazard at the observed time,
-\eqn{r_i = \alpha_k^{-1}
-\log\{1 + \alpha_k e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}
-\widehat{u}_k(x_i)\}}, which is
-\eqn{e^{\mathbf{z}_i^{\top}\widehat{\boldsymbol\beta}_k}\widehat u_k(x_i)}
-when \eqn{\alpha_k = 0}. It counts as an event for a failure from cause
-\eqn{k} and as censored otherwise. Subjects failing from a competing cause
-are censored at \eqn{+\infty}, so they never leave the risk set, as the
-subdistribution hazard requires. The Nelson--Aalen estimate of the
-cumulative hazard of the residuals is then drawn as a step function
-jumping at the event residuals, with pointwise limits if
-\code{conf.int = TRUE}.
+To avoid extrapolating the censoring survival function beyond the observed
+follow-up, the contribution of each subject is restricted to residual
+values satisfying
+\eqn{u \le L_{ki}}, where
+\eqn{L_{ki} = \widehat{\Lambda}_{ki}(X_{(\max)})} and
+\eqn{X_{(\max)}} is the largest observed follow-up time.
 
-\strong{Where the 45-degree line is valid.} If the residuals were
-\eqn{\mathrm{Exp}(1)} the curve would follow the diagonal. They are not
-when the fitted baseline is bounded, \eqn{\widehat u_k(\infty) < \infty}:
-the fitted cumulative incidence is then improper (a cure fraction exists),
-so subject \eqn{i}'s residual is \eqn{\mathrm{Exp}(1)} only up to
-\eqn{L_i = \widehat\Lambda^{CI}_k(\infty; \mathbf{z}_i)}, beyond which its
-remaining mass, \eqn{e^{-L_i} = 1 - \widehat F_k(\infty; \mathbf{z}_i)},
-sits at \eqn{+\infty}. Since \eqn{L_i} varies with the covariates the
-residuals are not identically distributed and no single reference exists.
-On \eqn{0 \le u < \min_i L_i} nothing has been relocated yet and the
-diagonal is exact; that region is shaded, its edge is marked by a dotted
-line whose position the legend reports, and \strong{the plot should be
-read there and not beyond}. Past it the curve bends below the diagonal even
-when the model is correct. When the fitted baseline is unbounded every
-\eqn{L_i} is infinite: nothing is shaded and the diagonal is exact
-throughout.
+Under a correctly specified model, the Cox--Snell residuals should behave
+as a sample from the unit exponential distribution, accounting for
+competing events and right censoring. Consequently, the estimated
+cumulative hazard should be close to the 45-degree line.
+The final jump is omitted from the plot, unless it is the only jump,
+because it is based on the smallest risk set and can be unstable.
+It is nevertheless retained in the returned results.
 
-No p-value is reported and none should be attached. Tests built from fitted
-residuals treated as if they were the true errors understate significance
-systematically (Durbin, in the discussion of Cox and Snell, 1968, p.269),
-and adjusting the residuals does not help because the adjustment leaves
-their correlation unchanged (Loynes, 1969, p.105).
+No goodness-of-fit p-value is provided.
 
-\strong{Layout.} The selected cases are drawn in turn, each case's
-baseline screen followed by its Cox--Snell screen. A screen is one graphics
-page with a panel per selected event, titled by the event code and its
-link, under a header giving the case label (or \code{main}) and, beneath
-it, the quantity shown (\code{ylab} or \code{xlab.coxsnell}). If the
-events do not fit the grid (see \code{mfrow}) the screen continues on
-further pages, each with the header repeated. Graphical parameters are
-restored on exit.
+\strong{Reproducibility.}
+The \code{prop.odds.subdist()} function uses random jitter to handle
+tied event times. A fixed seed is therefore used for each fit, and the
+random number state is restored after the function finishes.
 
-\strong{Incomplete panels.} A case whose optimisation did not converge is
-still drawn, with a warning that its curves should not be interpreted. If
-a semiparametric fit fails, a warning is issued and the panel shows the
-parametric curve alone; a warning is also issued when \code{crr()} does
-not converge. An observed event whose residual is not finite, because the
-fitted model is not defined at its time, is dropped from the Cox--Snell
-panel with a warning, and a panel left without events shows only a note.
+\strong{Plot layout.}
+For each selected model case, the baseline diagnostic is drawn first,
+followed by the Cox--Snell diagnostic. Each screen contains one panel
+per selected event. If the selected events do not fit on one page,
+additional pages are used. The case label and the quantity being plotted
+are displayed in the header of each page.
+
+\strong{Warnings and missing plots.}
+A model case that did not converge is still plotted, but a warning is
+issued and its diagnostics should be interpreted with caution.
+If a semiparametric fit fails or returns non-finite values, a warning
+is issued and the corresponding baseline panel displays only the
+parametric curve. A non-converged \code{crr()} fit is retained, with
+a warning that its estimate may be unreliable.
+If no usable events are available for a Cox--Snell panel, a note is
+displayed instead of the plot.
+Setting \code{baseline = FALSE} skips the semiparametric fits.
 }
 \seealso{
 \code{\link{pcrr}},
 \code{\link{print.pcrr}},
 \code{\link{summary.pcrr}},
-\code{\link{predict.pcrr}}
+\code{\link{predict.pcrr}},
+\code{\link[cmprsk]{crr}},
+\code{\link[timereg]{prop.odds.subdist}}
 }

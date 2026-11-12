@@ -35,11 +35,11 @@ test_that("pcrr fits and returns a well-formed object", {
 
 test_that("pcrr stores the data needed by plot.pcrr", {
   expect_false(is.null(fit2$x))
-  expect_false(is.null(fit2$delta))
+  expect_false(is.null(fit2$event))
   expect_false(is.null(fit2$z))
   
   expect_length(fit2$x, 500)
-  expect_equal(dim(fit2$delta), c(500L, 3L))
+  expect_length(fit2$event, 500)
   expect_equal(dim(fit2$z), c(500L, ncol(zmat)))
 })
 
